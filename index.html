@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thought Archive</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ══════════════════════════════════ LEFT SIDEBAR ════════════ -->
+  <aside id="sidebar">
+    <div class="logo-wrap">
+      <div class="logo-icon">🗄</div>
+      <div class="logo-text">
+        <span>Thought Archive</span>
+        <span>v1.0.0 · local</span>
+      </div>
+    </div>
+
+    <div class="nav-label" data-i18n="navNavigation">Navigation</div>
+
+    <div class="nav-item active" data-page="home" onclick="setNav(this)">
+      <span class="nav-icon">⊞</span>
+      <span data-i18n="navHome">Home</span>
+    </div>
+    <div class="nav-item" data-page="analytics" onclick="setNav(this)">
+      <span class="nav-icon">◈</span>
+      <span data-i18n="navAnalytics">Analytics</span>
+      <span class="nav-badge" id="analytics-badge">0</span>
+    </div>
+    <div class="nav-item" data-page="archive" onclick="setNav(this)">
+      <span class="nav-icon">⬡</span>
+      <span data-i18n="navArchive">Archive</span>
+    </div>
+
+    <div class="nav-label" style="margin-top:8px" data-i18n="navResources">Resources</div>
+
+    <div class="nav-item" onclick="filterResources('youtube')">
+      <span class="nav-icon">▶</span>
+      <span data-i18n="navYoutube">YouTube</span>
+    </div>
+    <div class="nav-item" onclick="filterResources('shorts')">
+      <span class="nav-icon">⚡</span>
+      <span data-i18n="navShorts">Shorts</span>
+    </div>
+    <div class="nav-item" onclick="filterResources('website')">
+      <span class="nav-icon">⊕</span>
+      <span data-i18n="navWebsites">Websites</span>
+    </div>
+    <div class="nav-item" onclick="filterResources('note')">
+      <span class="nav-icon">✎</span>
+      <span data-i18n="navNotes">Notes</span>
+    </div>
+    <div class="nav-label" id="tags-nav-label" style="display:none; margin-top:4px">Tags</div>
+    <div class="sidebar-tags-wrap" id="sidebar-tags-wrap" style="display:none"></div>
+
+    <div class="nav-item" onclick="openSettings(); setNav(this)">
+      <span class="nav-icon">⚙</span>
+      <span data-i18n="navSettings">Settings</span>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="storage-bar-wrap">
+        <p><span data-i18n="storageLabel">Local Storage</span><span id="storage-pct">—</span></p>
+        <div class="storage-bar"><div class="storage-bar-fill" id="storage-bar-fill"></div></div>
+      </div>
+      <div class="user-chip">
+        <div class="user-avatar">T</div>
+        <div class="user-info">
+          <span>Thinker</span>
+          <span data-i18n="offlineMode">Offline Mode</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══════════════════════════════════ CENTER MAIN ════════════ -->
+  <main id="main" data-view="home">
+    <!-- Top Bar -->
+    <div class="main-topbar">
+      <h1>Thought <span>Archive</span></h1>
+      <div class="topbar-actions">
+        <span class="live-dot"></span>
+        <button class="topbar-btn" onclick="switchView('note')" data-i18n="newNote">✎ New Note</button>
+        <button class="topbar-btn primary" onclick="addResource()" data-i18n="addResource">＋ Add Resource</button>
+        <button class="topbar-btn" id="focus-btn" onclick="toggleFocusMode()" title="Focus Mode  (Ctrl+F)" data-i18n="focus">⊡ Focus</button>
+        <button class="topbar-btn" onclick="showShortcutHelp()" title="Keyboard shortcuts  (?)">⌨</button>
+        <button class="topbar-btn" onclick="openSettings()" title="Settings">⚙</button>
+      </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-icon purple">📝</div>
+        <div class="stat-body">
+          <div class="stat-value" id="stat-notes">12</div>
+          <div class="stat-label" data-i18n="statNotesLabel">Notes Saved</div>
+          <div class="stat-delta up" data-i18n="statNotesDelta">↑ 3 this week</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon blue">🔗</div>
+        <div class="stat-body">
+          <div class="stat-value" id="stat-resources">8</div>
+          <div class="stat-label" data-i18n="statResourcesLabel">Resources Linked</div>
+          <div class="stat-delta up" data-i18n="statResDelta">↑ 2 today</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon mixed">⏱</div>
+        <div class="stat-body">
+          <div class="stat-value" id="stat-time">0m</div>
+          <div class="stat-label" data-i18n="statTimeLabel">Session Time</div>
+          <div class="stat-delta hot" data-i18n="statTimeActive">● Active now</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dual-View Stack -->
+    <div class="dual-view-wrap">
+      <!-- Tab Bar -->
+      <div class="dv-tabbar">
+        <div class="dv-tab active" id="tab-media" onclick="switchView('media')">
+          <div class="dv-tab-dot media"></div>
+          <span data-i18n="tabMedia">Media View</span>
+        </div>
+        <div class="dv-tab" id="tab-note" onclick="switchView('note')">
+          <div class="dv-tab-dot note"></div>
+          <span data-i18n="tabNote">Note View</span>
+        </div>
+        <div class="dv-tabbar-right">
+          <input class="dv-url-bar" id="url-bar" type="text" placeholder="https://..." value="" />
+          <div class="dv-icon-btn" onclick="loadUrl()" title="Load URL">↵</div>
+          <div class="dv-icon-btn" onclick="openExternal()" title="Open in browser">⧉</div>
+        </div>
+      </div>
+
+      <!-- Layers -->
+      <div class="dv-layers">
+        <!-- Layer A: Media -->
+        <div id="layer-media">
+          <div class="media-placeholder" id="media-placeholder">
+            <div class="ph-icon">▶</div>
+            <p data-i18n="mediaPh1">Select a resource from the list</p>
+            <small data-i18n="mediaPh2">YouTube, Shorts, or Websites will appear here</small>
+          </div>
+          <iframe id="media-iframe" style="display:none;" allowfullscreen
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture">
+          </iframe>
+        </div>
+
+        <!-- Layer B: Note -->
+        <div id="layer-note" class="hidden">
+          <div class="note-toolbar">
+            <button class="fmt-btn" onclick="fmt('bold')"><b>B</b></button>
+            <button class="fmt-btn" onclick="fmt('italic')"><i>I</i></button>
+            <button class="fmt-btn" onclick="fmt('underline')"><u>U</u></button>
+            <div class="note-sep"></div>
+            <button class="fmt-btn" onclick="insertMd('## ')">H2</button>
+            <button class="fmt-btn" onclick="insertMd('- ')">List</button>
+            <button class="fmt-btn" onclick="insertMd('> ')">Quote</button>
+            <button class="fmt-btn" onclick="insertMd('```\n\n```')">Code</button>
+            <div class="note-sep"></div>
+            <button class="fmt-btn" onclick="insertTimestamp()" data-i18n="noteStamp">⏱ Stamp</button>
+            <button class="note-save-btn" onclick="saveNote()" data-i18n="noteSave">💾 Save</button>
+          </div>
+          <input class="note-title-input" id="note-title" type="text"
+            placeholder="Note title..." data-i18n-placeholder="noteTitlePh" />
+          <textarea id="note-editor"
+            placeholder="Start writing your thoughts...&#10;&#10;Select a resource to annotate, or type freely."
+            data-i18n-placeholder="noteEditorPh"></textarea>
+          <div class="note-statusbar">
+            <span><span data-i18n="noteWords">Words:</span> <b id="word-count">0</b></span>
+            <span><span data-i18n="noteChars">Chars:</span> <b id="char-count">0</b></span>
+            <span><span data-i18n="noteLines">Lines:</span> <b id="line-count">1</b></span>
+            <span id="save-status" style="margin-left:auto;" data-i18n="noteStatusNotSaved">Not saved</span>
+          </div>
+          <!-- Tag Input Row -->
+          <div class="note-tag-row">
+            <div class="note-tag-pills" id="note-tag-pills"></div>
+            <input class="note-tag-input" id="note-tag-input" type="text" placeholder="#태그 입력 후 Enter" maxlength="32" />
+          </div>
+          <!-- Save Confirm Panel -->
+          <div class="save-confirm-panel" id="save-confirm-panel">
+            <div class="scp-inner">
+              <div class="scp-section">
+                <span class="scp-label">Color</span>
+                <div class="scp-colors" id="scp-colors"></div>
+              </div>
+              <div class="scp-sep"></div>
+              <div class="scp-section">
+                <span class="scp-label">Emoji</span>
+                <div class="scp-emojis" id="scp-emojis"></div>
+              </div>
+              <div class="scp-actions">
+                <button class="scp-cancel" onclick="cancelSave()">Cancel</button>
+                <button class="scp-confirm" onclick="confirmSave()">💾 Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analytics View -->
+    <div id="analytics-view">
+      <div class="analytics-header">
+        <div class="analytics-title">◈ Analytics · Insights</div>
+        <div class="analytics-updated" id="analytics-updated"></div>
+      </div>
+      <div class="an-quick-row" id="an-quick-row"></div>
+      <div class="an-section">
+        <div class="an-section-title">Resources by Type</div>
+        <div class="an-type-bars" id="an-type-bars"></div>
+      </div>
+      <div class="an-bottom-row">
+        <div class="an-card">
+          <div class="an-section-title">Top Tags</div>
+          <div class="an-tag-list" id="an-tag-list"></div>
+        </div>
+        <div class="an-card">
+          <div class="an-section-title">Notes by Color</div>
+          <div class="an-color-list" id="an-color-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Archive View -->
+    <div id="archive-view">
+      <div class="archive-header">
+        <div class="archive-title" data-i18n="archiveTitle">📁 Archive · Saved Notes</div>
+        <div class="archive-count" id="archive-count">0 notes</div>
+      </div>
+      <div class="archive-filter-row" id="archive-filter-row">
+        <div class="arc-filter-chip active" data-color="all" onclick="setArchiveColorFilter(this,'all')">All</div>
+        <div class="arc-filter-chip color-chip" data-color="#8A2BE2" onclick="setArchiveColorFilter(this,'#8A2BE2')" style="background:#8A2BE2"></div>
+        <div class="arc-filter-chip color-chip" data-color="#1E90FF" onclick="setArchiveColorFilter(this,'#1E90FF')" style="background:#1E90FF"></div>
+        <div class="arc-filter-chip color-chip" data-color="#FF6B6B" onclick="setArchiveColorFilter(this,'#FF6B6B')" style="background:#FF6B6B"></div>
+        <div class="arc-filter-chip color-chip" data-color="#FFD93D" onclick="setArchiveColorFilter(this,'#FFD93D')" style="background:#FFD93D"></div>
+        <div class="arc-filter-chip color-chip" data-color="#FF8C42" onclick="setArchiveColorFilter(this,'#FF8C42')" style="background:#FF8C42"></div>
+        <div class="arc-filter-chip color-chip" data-color="#C0C0C0" onclick="setArchiveColorFilter(this,'#C0C0C0')" style="background:#C0C0C0"></div>
+      </div>
+      <div class="archive-grid" id="archive-grid"></div>
+    </div>
+  </main>
+
+  <!-- ══════════════════════════════════ RIGHT PANEL ════════════ -->
+  <aside id="right">
+    <!-- Resource List Header -->
+    <div class="panel-header">
+      <div class="panel-title">
+        <div class="panel-title-dot"></div>
+        <span data-i18n="panelResourceList">Resource List</span>
+      </div>
+      <div class="panel-action" onclick="addResource()" data-i18n="panelAdd">＋ Add</div>
+    </div>
+
+    <!-- Search -->
+    <div class="search-wrap">
+      <input class="search-box" id="search-input" type="text"
+        placeholder="🔍  Search resources..."
+        data-i18n-placeholder="searchPh"
+        oninput="filterBySearch()"
+        onblur="setTimeout(hideTagAutocomplete,150)" />
+      <div class="tag-autocomplete" id="tag-autocomplete"></div>
+    </div>
+
+    <!-- Filter Pills -->
+    <div class="filter-pills" id="filter-pills">
+      <div class="pill active" data-filter="all"     onclick="setPill(this,'all')"     data-i18n="pillAll">All</div>
+      <div class="pill"        data-filter="youtube" onclick="setPill(this,'youtube')" data-i18n="pillYoutube">YouTube</div>
+      <div class="pill"        data-filter="shorts"  onclick="setPill(this,'shorts')"  data-i18n="pillShorts">Shorts</div>
+      <div class="pill"        data-filter="website" onclick="setPill(this,'website')" data-i18n="pillWebsite">Website</div>
+      <div class="pill"        data-filter="note"    onclick="setPill(this,'note')"    data-i18n="pillNote">Notes</div>
+    </div>
+
+    <!-- Resource Items -->
+    <div class="resource-list" id="resource-list"></div>
+
+    <div class="panel-divider"></div>
+
+    <!-- Activity Feed -->
+    <div class="feed-section">
+      <div class="panel-header" style="border-bottom:none; padding-bottom:4px;">
+        <div class="panel-title">
+          <div class="panel-title-dot"></div>
+          <span data-i18n="panelActivityFeed">Activity Feed</span>
+          <span class="live-dot" style="margin-left:4px;"></span>
+        </div>
+      </div>
+      <div class="feed-list" id="feed-list"></div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SETTINGS OVERLAY
+══════════════════════════════════════════════════════════════ -->
+<div id="settings-overlay" onclick="overlayClickClose(event)">
+  <div id="settings-modal">
+
+    <!-- Header -->
+    <div class="sett-header">
+      <div class="sett-header-left">
+        <div class="sett-header-icon">⚙</div>
+        <div class="sett-header-title">
+          <h2 data-i18n="settTitle">Settings</h2>
+          <p data-i18n="settDesc">Preferences are saved to localStorage automatically</p>
+        </div>
+      </div>
+      <div class="sett-close" onclick="closeSettings()">✕</div>
+    </div>
+
+    <!-- Body -->
+    <div class="sett-body">
+
+      <!-- ① Visual -->
+      <div class="sett-section">
+        <div class="sett-section-head">
+          <div class="sett-section-icon purple">◑</div>
+          <span class="sett-section-title" data-i18n="settVisual">VISUAL</span>
+          <div class="sett-section-line"></div>
+        </div>
+
+        <div class="sett-row">
+          <div class="sett-row-icon">☀</div>
+          <div class="sett-row-info">
+            <div class="sett-row-label" data-i18n="settDarkLight">Dark / Light Mode</div>
+            <div class="sett-row-desc" data-i18n="settDarkLightDesc">Switch between Deep Space dark and soft light theme</div>
+          </div>
+          <label class="sett-toggle">
+            <input type="checkbox" id="tog-theme" onchange="applyTheme(this.checked)" />
+            <div class="sett-toggle-track"></div>
+            <div class="sett-toggle-thumb"></div>
+          </label>
+          <span style="font-size:10px;color:var(--text-lo);min-width:32px;" id="theme-label" data-i18n="settThemeDark">Dark</span>
+        </div>
+
+        <div class="sett-row">
+          <div class="sett-row-icon">◻</div>
+          <div class="sett-row-info">
+            <div class="sett-row-label" data-i18n="settTransparency">Transparency</div>
+            <div class="sett-row-desc" data-i18n="settTransparencyDesc">Adjust Glassmorphism opacity across all cards</div>
+          </div>
+          <div class="sett-slider-wrap">
+            <input class="sett-slider" id="sl-transparency" type="range" min="0" max="100" value="55"
+              oninput="applyTransparency(this.value)" />
+            <span class="sett-slider-val" id="transparency-val">55%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ② Workflow -->
+      <div class="sett-section">
+        <div class="sett-section-head">
+          <div class="sett-section-icon blue">⚡</div>
+          <span class="sett-section-title" data-i18n="settWorkflow">WORKFLOW</span>
+          <div class="sett-section-line"></div>
+        </div>
+
+        <div class="sett-row">
+          <div class="sett-row-icon">⊞</div>
+          <div class="sett-row-info">
+            <div class="sett-row-label" data-i18n="settStartup">Default Startup View</div>
+            <div class="sett-row-desc" data-i18n="settStartupDesc">Which layer opens when the app launches</div>
+          </div>
+          <select class="sett-select" id="sel-startup" onchange="saveSetting('startupView', this.value)">
+            <option value="media" data-i18n="settStartupMedia">Media View</option>
+            <option value="note" data-i18n="settStartupNote">Note View</option>
+          </select>
+        </div>
+
+        <div class="sett-row">
+          <div class="sett-row-icon">⏱</div>
+          <div class="sett-row-info">
+            <div class="sett-row-label" data-i18n="settAutoSave">Auto-Save Interval</div>
+            <div class="sett-row-desc" data-i18n="settAutoSaveDesc">How often notes are saved automatically in the background</div>
+          </div>
+          <select class="sett-select" id="sel-autosave" onchange="applyAutoSave(this.value)">
+            <option value="60"  data-i18n="settAs1">Every 1 min</option>
+            <option value="300" selected data-i18n="settAs5">Every 5 min</option>
+            <option value="600" data-i18n="settAs10">Every 10 min</option>
+            <option value="0"   data-i18n="settAsOff">Disabled</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- ③ System Tools -->
+      <div class="sett-section">
+        <div class="sett-section-head">
+          <div class="sett-section-icon mixed">◈</div>
+          <span class="sett-section-title" data-i18n="settSystemTools">SYSTEM TOOLS</span>
+          <div class="sett-section-line"></div>
+        </div>
+
+        <div class="sett-row">
+          <div class="sett-row-icon">⬡</div>
+          <div class="sett-row-info">
+            <div class="sett-row-label" data-i18n="settAlwaysOnTop">Always on Top</div>
+            <div class="sett-row-desc" data-i18n="settAlwaysOnTopDesc">Keep window above all others — Electron IPC ready</div>
+          </div>
+          <label class="sett-toggle">
+            <input type="checkbox" id="tog-ontop" onchange="applyAlwaysOnTop(this.checked)" />
+            <div class="sett-toggle-track"></div>
+            <div class="sett-toggle-thumb"></div>
+          </label>
+          <span style="font-size:10px;color:var(--text-lo);min-width:32px;" id="ontop-label" data-i18n="settOnTopOff">Off</span>
+        </div>
+
+        <div class="sett-row">
+          <div class="sett-row-icon">🌐</div>
+          <div class="sett-row-info">
+            <div class="sett-row-label">Language / 언어</div>
+            <div class="sett-row-desc" data-i18n="settLangDesc">Switch UI language between Korean and English</div>
+          </div>
+          <label class="sett-toggle">
+            <input type="checkbox" id="tog-lang" onchange="applyLanguage(this.checked ? 'ko' : 'en'); saveSetting('lang', this.checked ? 'ko' : 'en')" />
+            <div class="sett-toggle-track"></div>
+            <div class="sett-toggle-thumb"></div>
+          </label>
+          <span style="font-size:10px;color:var(--text-lo);min-width:32px;" id="lang-label">EN</span>
+        </div>
+
+        <div class="sett-row">
+          <div class="sett-row-icon">✦</div>
+          <div class="sett-row-info">
+            <div class="sett-row-label" data-i18n="settClearFeed">Clear Activity Feed</div>
+            <div class="sett-row-desc" data-i18n="settClearFeedDesc">Remove all logged events from the right panel feed</div>
+          </div>
+          <button class="sett-btn blue" onclick="clearFeed()" data-i18n="settClearFeedBtn">Clear Feed</button>
+        </div>
+      </div>
+
+      <!-- ④ Data Management -->
+      <div class="sett-section">
+        <div class="sett-section-head">
+          <div class="sett-section-icon danger">⬇</div>
+          <span class="sett-section-title" data-i18n="settDataMgmt">DATA MANAGEMENT</span>
+          <div class="sett-section-line"></div>
+        </div>
+
+        <div class="sett-row">
+          <div class="sett-row-icon">✎</div>
+          <div class="sett-row-info">
+            <div class="sett-row-label" data-i18n="settExportMd">Export as Markdown</div>
+            <div class="sett-row-desc" data-i18n="settExportMdDesc">Download the current note as a <b style="color:var(--blue)">.md</b> file</div>
+          </div>
+          <button class="sett-btn purple" onclick="exportMarkdown()" data-i18n="settExportBtn">Export .md</button>
+        </div>
+
+        <div class="sett-row">
+          <div class="sett-row-icon">↺</div>
+          <div class="sett-row-info">
+            <div class="sett-row-label" data-i18n="settReset">Reset All Settings</div>
+            <div class="sett-row-desc" data-i18n="settResetDesc">Restore every preference to factory default — notes are kept</div>
+          </div>
+          <button class="sett-btn danger" onclick="resetSettings()" data-i18n="settResetBtn">Reset</button>
+        </div>
+      </div>
+
+    </div><!-- /sett-body -->
+
+    <!-- Footer -->
+    <div class="sett-footer">
+      <span class="sett-footer-note"><span data-i18n="settFooterNote">Settings auto-saved · Key:</span> <b>ta_settings</b></span>
+      <button class="sett-btn blue" onclick="closeSettings()" data-i18n="settClose">Close</button>
+    </div>
+
+  </div><!-- /settings-modal -->
+</div><!-- /settings-overlay -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     SHORTCUT HELP PANEL
+══════════════════════════════════════════════════════════════ -->
+<div id="shortcut-help">
+  <div class="sh-header">
+    <div class="sh-header-left">
+      <div class="sh-header-icon">⌨</div>
+      <div>
+        <div class="sh-title" data-i18n="shTitle">Keyboard Shortcuts</div>
+        <div class="sh-hint" data-i18n="shHint">Press <b style="color:var(--blue)">?</b> anywhere to toggle · <b style="color:var(--blue)">Esc</b> to close</div>
+      </div>
+    </div>
+    <span class="sh-close" onclick="closeShortcutHelp()">✕</span>
+  </div>
+  <div class="sh-grid">
+    <div class="sh-row">
+      <span class="sh-label" data-i18n="shSave">Save note</span>
+      <span class="sh-keys"><span class="kbd">Ctrl</span><span class="sh-plus">+</span><span class="kbd">S</span></span>
+    </div>
+    <div class="sh-row">
+      <span class="sh-label" data-i18n="shToggleView">Toggle Media / Note</span>
+      <span class="sh-keys"><span class="kbd">Ctrl</span><span class="sh-plus">+</span><span class="kbd">M</span></span>
+    </div>
+    <div class="sh-row">
+      <span class="sh-label" data-i18n="shFocusUrl">Focus URL bar</span>
+      <span class="sh-keys"><span class="kbd">Ctrl</span><span class="sh-plus">+</span><span class="kbd">K</span></span>
+    </div>
+    <div class="sh-row">
+      <span class="sh-label" data-i18n="shFocusSearch">Focus search</span>
+      <span class="sh-keys"><span class="kbd">Ctrl</span><span class="sh-plus">+</span><span class="kbd">Shift</span><span class="sh-plus">+</span><span class="kbd">F</span></span>
+    </div>
+    <div class="sh-row">
+      <span class="sh-label" data-i18n="shFocusMode">Toggle Focus Mode</span>
+      <span class="sh-keys"><span class="kbd">Ctrl</span><span class="sh-plus">+</span><span class="kbd">F</span></span>
+    </div>
+    <div class="sh-row">
+      <span class="sh-label" data-i18n="shSettings">Open Settings</span>
+      <span class="sh-keys"><span class="kbd">Ctrl</span><span class="sh-plus">+</span><span class="kbd">,</span></span>
+    </div>
+    <div class="sh-row">
+      <span class="sh-label" data-i18n="shHelp">This help panel</span>
+      <span class="sh-keys"><span class="kbd">?</span></span>
+    </div>
+    <div class="sh-row">
+      <span class="sh-label" data-i18n="shEscape">Close panel / Exit mode</span>
+      <span class="sh-keys"><span class="kbd">Esc</span></span>
+    </div>
+  </div>
+</div>
+
+<script src="main.js"></script>
+</body>
+</html>
