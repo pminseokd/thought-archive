@@ -19,7 +19,8 @@ const TRANSLATIONS = {
     noteEditorPh:'Start writing your thoughts...\n\nSelect a resource to annotate, or type freely.',
     noteWords:'Words:', noteChars:'Chars:', noteLines:'Lines:',
     panelResourceList:'Resource List', panelAdd:'＋ Add', panelActivityFeed:'Activity Feed',
-    searchPh:'🔍  Search resources...',
+    searchPh:'🔍  Search titles, tags, notes…',
+    searchNoResult:'No results found',
     pillAll:'All', pillYoutube:'YouTube', pillShorts:'Shorts', pillWebsite:'Website', pillNote:'Notes',
     archiveTitle:'📁 Archive · Saved Notes',
     archiveEmptyL1:'No saved notes yet.', archiveEmptyL2:'Save a note to see it here.',
@@ -65,7 +66,8 @@ const TRANSLATIONS = {
     noteEditorPh:'생각을 자유롭게 적어보세요...\n\n리소스를 선택하고 주석을 달거나, 자유롭게 작성하세요.',
     noteWords:'단어:', noteChars:'글자:', noteLines:'줄:',
     panelResourceList:'리소스 목록', panelAdd:'＋ 추가', panelActivityFeed:'활동 피드',
-    searchPh:'🔍  리소스 검색...',
+    searchPh:'🔍  제목, 태그, 본문 검색…',
+    searchNoResult:'검색 결과가 없습니다',
     pillAll:'전체', pillYoutube:'유튜브', pillShorts:'숏츠', pillWebsite:'웹사이트', pillNote:'메모',
     archiveTitle:'📁 보관함 · 저장된 메모',
     archiveEmptyL1:'저장된 메모가 없습니다.', archiveEmptyL2:'메모를 저장하면 여기에 표시됩니다.',
@@ -414,34 +416,69 @@ function renderArchive() {
     });
 }
 
+/* ─── Body Snippet Helper ────────────────────────────────────────── */
+function getBodySnippet(body, q) {
+  const lower = body.toLowerCase();
+  const idx   = lower.indexOf(q);
+  if (idx === -1) return null;
+  const start = Math.max(0, idx - 30);
+  const end   = Math.min(body.length, idx + q.length + 30);
+  const esc   = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return {
+    before: (start > 0 ? '…' : '') + esc(body.slice(start, idx)),
+    match:  esc(body.slice(idx, idx + q.length)),
+    after:  esc(body.slice(idx + q.length, end)) + (end < body.length ? '…' : '')
+  };
+}
+
 /* ─── Resource Rendering ─────────────────────────────────────────── */
 function renderResources(filter = activeFilter, search = '') {
   const list = document.getElementById('resource-list');
   list.innerHTML = '';
 
   const q = search.toLowerCase();
-  const filtered = RESOURCES.filter(r => {
-    const matchFilter = filter === 'all' || r.type === filter;
-    const matchSearch = !q ? true
-      : q.startsWith('#')
-        ? (r.tags || []).some(t => t.includes(q))
-        : (r.name.toLowerCase().includes(q) || (r.tags || []).some(t => t.includes(q)));
-    const matchTags = activeTags.length === 0 ||
-      activeTags.every(t => (r.tags || []).includes(t));
-    return matchFilter && matchSearch && matchTags;
-  });
 
-  if (filtered.length === 0) {
-    list.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-lo);font-size:12px;">No resources found</div>`;
+  const withPriority = RESOURCES.reduce((acc, r) => {
+    const matchFilter = filter === 'all' || r.type === filter;
+    const matchTags   = activeTags.length === 0 ||
+      activeTags.every(t => (r.tags || []).includes(t));
+    if (!matchFilter || !matchTags) return acc;
+
+    if (!q) { acc.push({ r, priority: 0 }); return acc; }
+
+    if (q.startsWith('#')) {
+      if ((r.tags || []).some(t => t.includes(q)))
+        acc.push({ r, priority: 1 });
+      return acc;
+    }
+
+    const nameMatch = r.name.toLowerCase().includes(q);
+    const tagMatch  = (r.tags || []).some(t => t.toLowerCase().includes(q));
+    const noteBody  = r.type === 'note' ? ((notes['note_' + r.id] || {}).body || '') : '';
+    const bodyMatch = noteBody.toLowerCase().includes(q);
+
+    if      (nameMatch) acc.push({ r, priority: 0, snippet: null });
+    else if (tagMatch)  acc.push({ r, priority: 1, snippet: null });
+    else if (bodyMatch) acc.push({ r, priority: 2, snippet: getBodySnippet(noteBody, q) });
+    return acc;
+  }, []);
+
+  withPriority.sort((a, b) => a.priority - b.priority);
+
+  if (withPriority.length === 0) {
+    list.innerHTML = `<div class="search-no-result">${T('searchNoResult')}</div>`;
     return;
   }
 
-  filtered.forEach(r => {
+  withPriority.forEach(({ r, snippet }) => {
     const div = document.createElement('div');
     div.className = 'resource-item' + (activeResId === r.id ? ' active' : '');
     div.dataset.id = r.id;
     const tagsSnippet = (r.tags||[]).length
       ? `<div style="margin-top:2px;display:flex;gap:3px;flex-wrap:wrap;">${(r.tags||[]).map(t=>`<span style="font-size:9px;color:var(--purple);border:1px solid rgba(138,43,226,0.35);border-radius:10px;padding:0 5px;">${t}</span>`).join('')}</div>`
+      : '';
+    const snippetHtml = snippet
+      ? `<div class="res-snippet">${snippet.before}<span class="res-snippet-hl">${snippet.match}</span>${snippet.after}</div>`
       : '';
     div.innerHTML = `
       <div class="res-thumb ${r.thumb}">${r.icon}</div>
@@ -449,6 +486,7 @@ function renderResources(filter = activeFilter, search = '') {
         <div class="res-name">${r.name}</div>
         <div class="res-meta">${r.meta}</div>
         ${tagsSnippet}
+        ${snippetHtml}
       </div>
       <div class="res-badge ${r.thumb}">${r.type}</div>
       <button class="res-delete" title="Delete" onclick="event.stopPropagation(); deleteResource(${r.id})">✕</button>
@@ -1005,8 +1043,16 @@ function saveSetting(key, value) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
-function openSettings()  { document.getElementById('settings-overlay').classList.add('open'); }
-function closeSettings() { document.getElementById('settings-overlay').classList.remove('open'); }
+function openSettings() {
+  const el = document.getElementById('settings-overlay');
+  el.classList.add('visible');
+  requestAnimationFrame(() => el.classList.add('open'));
+}
+function closeSettings() {
+  const el = document.getElementById('settings-overlay');
+  el.classList.remove('open');
+  el.addEventListener('transitionend', () => el.classList.remove('visible'), { once: true });
+}
 function overlayClickClose(e) {
   if (e.target === document.getElementById('settings-overlay')) closeSettings();
 }
@@ -1162,8 +1208,16 @@ function toggleFocusMode() {
 }
 
 /* ─── Shortcut Help ──────────────────────────────────────────────── */
-function showShortcutHelp() { document.getElementById('shortcut-help').classList.add('open'); }
-function closeShortcutHelp() { document.getElementById('shortcut-help').classList.remove('open'); }
+function showShortcutHelp() {
+  const el = document.getElementById('shortcut-help');
+  el.classList.add('visible');
+  requestAnimationFrame(() => el.classList.add('open'));
+}
+function closeShortcutHelp() {
+  const el = document.getElementById('shortcut-help');
+  el.classList.remove('open');
+  el.addEventListener('transitionend', () => el.classList.remove('visible'), { once: true });
+}
 
 /* ─── 키보드 단축키 ──────────────────────────────────────────────── */
 document.addEventListener('keydown', e => {
@@ -1216,11 +1270,10 @@ document.addEventListener('keydown', e => {
 
 /* ─── Viewport Scale ─────────────────────────────────────────────── */
 function applyScale() {
-  const app = document.getElementById('app');
-  const scaleX = window.innerWidth / 1600;
+  const scaleX = window.innerWidth  / 1600;
   const scaleY = window.innerHeight / 900;
-  const scale = Math.min(scaleX, scaleY);
-  app.style.transform = `scale(${scale})`;
+  const scale  = Math.min(scaleX, scaleY);
+  document.documentElement.style.zoom = String(scale);
 }
 applyScale();
 window.addEventListener('resize', applyScale);
@@ -1233,3 +1286,359 @@ setInterval(() => {
   const m = Math.floor((sessionSecs % 3600) / 60);
   document.getElementById('stat-time').textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
 }, 1000);
+
+/* ═══════════════════════════════════════════════════════════════
+   BACKLINK SYSTEM
+═══════════════════════════════════════════════════════════════ */
+
+/* ─── 헬퍼 ────────────────────────────────────────────────────── */
+function getNoteTitles() {
+  return [...new Set(Object.values(notes).map(n => n.title).filter(Boolean))];
+}
+
+function parseBacklinks(body) {
+  const re = /\[\[([^\]]+)\]\]/g;
+  const result = [];
+  let m;
+  while ((m = re.exec(body)) !== null) result.push(m[1]);
+  return [...new Set(result)];
+}
+
+function renderBodyWithLinks(body) {
+  return body
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\[\[([^\]]+)\]\]/g, (_, title) => {
+      const exists = Object.values(notes).some(n => n.title === title);
+      const cls = exists ? 'bl-link' : 'bl-link broken';
+      return `<span class="${cls}" data-title="${title.replace(/"/g, '&quot;')}">${title}</span>`;
+    });
+}
+
+function buildBacklinkIndex() {
+  const idx = {};
+  Object.entries(notes).forEach(([key, note]) => {
+    parseBacklinks(note.body || '').forEach(title => {
+      if (!idx[title]) idx[title] = [];
+      idx[title].push(key);
+    });
+  });
+  return idx;
+}
+
+function getBacklinksTo(title) {
+  const idx = buildBacklinkIndex();
+  return (idx[title] || []).map(key => ({ key, note: notes[key] })).filter(x => x.note);
+}
+
+function escapeRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Feature 1: [[ 자동완성
+═══════════════════════════════════════════════════════════════ */
+let _blSelected = -1;
+
+function initBacklinkAutocomplete() {
+  const editor = document.getElementById('note-editor');
+  if (!editor) return;
+  editor.addEventListener('input',  _onBlInput);
+  editor.addEventListener('keydown', _onBlKeydown);
+  editor.addEventListener('blur',   () => { setTimeout(hideBacklinkDropdown, 150); updateNoteOutlinks(); });
+}
+
+function _getBlQuery(editor) {
+  const before = editor.value.slice(0, editor.selectionStart);
+  const openIdx = before.lastIndexOf('[[');
+  if (openIdx === -1) return null;
+  const between = before.slice(openIdx + 2);
+  if (between.includes(']]')) return null;
+  return between;
+}
+
+function _onBlInput() {
+  const query = _getBlQuery(this);
+  updateNoteOutlinks();
+  if (query === null) { hideBacklinkDropdown(); return; }
+  const titles = getNoteTitles().filter(t =>
+    query === '' || t.toLowerCase().includes(query.toLowerCase())
+  );
+  if (titles.length === 0) { hideBacklinkDropdown(); return; }
+  _showBlDropdown(titles, query, this);
+}
+
+function _onBlKeydown(e) {
+  const dd = document.getElementById('backlink-dropdown');
+  if (!dd || !dd.classList.contains('open')) return;
+  const items = dd.querySelectorAll('.bl-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _blSelected = Math.min(_blSelected + 1, items.length - 1);
+    _updateBlSelection(items);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _blSelected = Math.max(_blSelected - 1, 0);
+    _updateBlSelection(items);
+  } else if (e.key === 'Enter' && _blSelected >= 0 && items[_blSelected]) {
+    e.preventDefault();
+    insertBacklink(items[_blSelected].dataset.title);
+  } else if (e.key === 'Escape') {
+    hideBacklinkDropdown();
+  }
+}
+
+function _updateBlSelection(items) {
+  items.forEach((it, i) => it.classList.toggle('selected', i === _blSelected));
+  if (items[_blSelected]) items[_blSelected].scrollIntoView({ block: 'nearest' });
+}
+
+function _showBlDropdown(titles, query, editor) {
+  const dd = document.getElementById('backlink-dropdown');
+  if (!dd) return;
+  _blSelected = -1;
+  dd.innerHTML = '';
+
+  titles.slice(0, 8).forEach(title => {
+    const item = document.createElement('div');
+    item.className = 'bl-item';
+    item.dataset.title = title;
+    const hl = query
+      ? title.replace(new RegExp(`(${escapeRe(query)})`, 'gi'), '<b>$1</b>')
+      : title;
+    item.innerHTML = `<span class="bl-item-icon">✎</span><span>${hl}</span>`;
+    item.addEventListener('mousedown', e => { e.preventDefault(); insertBacklink(title); });
+    dd.appendChild(item);
+  });
+
+  /* 위치 계산: getBoundingClientRect는 app scale 반영값을 반환 → fixed 좌표 그대로 사용 */
+  const r = editor.getBoundingClientRect();
+  dd.style.left  = r.left + 'px';
+  dd.style.top   = (r.bottom + 4) + 'px';
+  dd.style.width = r.width + 'px';
+  dd.classList.add('open');
+}
+
+function hideBacklinkDropdown() {
+  const dd = document.getElementById('backlink-dropdown');
+  if (dd) dd.classList.remove('open');
+  _blSelected = -1;
+}
+
+function insertBacklink(title) {
+  const editor = document.getElementById('note-editor');
+  if (!editor) return;
+  const val     = editor.value;
+  const pos     = editor.selectionStart;
+  const before  = val.slice(0, pos);
+  const openIdx = before.lastIndexOf('[[');
+  const inserted = `[[${title}]]`;
+  editor.value = val.slice(0, openIdx) + inserted + val.slice(pos);
+  const newPos = openIdx + inserted.length;
+  editor.selectionStart = editor.selectionEnd = newPos;
+  editor.focus();
+  hideBacklinkDropdown();
+  updateWordCount();
+  updateNoteOutlinks();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Feature 2: Outgoing Links Preview (Note View 하단 row)
+═══════════════════════════════════════════════════════════════ */
+function updateNoteOutlinks() {
+  const editor  = document.getElementById('note-editor');
+  const row     = document.getElementById('note-outlinks-row');
+  const pillsEl = document.getElementById('note-outlinks-pills');
+  if (!editor || !row || !pillsEl) return;
+
+  const links = parseBacklinks(editor.value);
+  if (links.length === 0) { row.style.display = 'none'; return; }
+
+  row.style.display = 'flex';
+  pillsEl.innerHTML = '';
+  links.forEach(title => {
+    const exists = Object.values(notes).some(n => n.title === title);
+    const pill   = document.createElement('span');
+    pill.className = 'note-outlink-pill' + (exists ? '' : ' broken');
+    pill.textContent = title;
+    pill.title = exists ? 'Click to open' : 'Note not found';
+    if (exists) pill.addEventListener('click', () => openNoteByTitle(title));
+    pillsEl.appendChild(pill);
+  });
+}
+
+function openNoteByTitle(title) {
+  const entry = Object.entries(notes).find(([, n]) => n.title === title);
+  if (!entry) { showToast(`⚠  "${title}" 노트를 찾을 수 없습니다`); return; }
+  const [key, note] = entry;
+  currentNoteKey = key;
+  document.getElementById('note-title').value  = note.title || '';
+  document.getElementById('note-editor').value = note.body  || '';
+  currentTags = (note.tags || []).slice();
+  renderTagPills();
+  updateWordCount();
+  updateNoteOutlinks();
+  updateBacklinkPanel();
+  addFeedItem('blue', `Opened <b>${note.title || 'Untitled'}</b> via backlink`);
+  showToast(`→ "${title}" opened`);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Feature 3: Archive 카드 Backlink Count
+   (renderArchive를 패치하여 카드 DOM에 count + 링크 렌더링 추가)
+═══════════════════════════════════════════════════════════════ */
+(function _patchRenderArchive() {
+  const orig = window.renderArchive;
+  window.renderArchive = function () {
+    orig.apply(this, arguments);
+    _enhanceArchiveCards();
+  };
+})();
+
+function _enhanceArchiveCards() {
+  const grid = document.getElementById('archive-grid');
+  if (!grid) return;
+
+  grid.querySelectorAll('.archive-card').forEach(card => {
+    const titleEl = card.querySelector('.archive-card-title');
+    if (!titleEl) return;
+    const title = titleEl.textContent.trim();
+
+    /* ① body preview에 [[링크]] 인라인 렌더링 */
+    const previewEl = card.querySelector('.archive-card-preview');
+    if (previewEl) {
+      const entry = Object.entries(notes).find(([, n]) => n.title === title);
+      if (entry) {
+        const body = entry[1].body || '';
+        previewEl.innerHTML = renderBodyWithLinks(body) || '<em style="opacity:.4">Empty note</em>';
+      }
+    }
+
+    /* ② bl-link 클릭 — capture phase로 card click보다 먼저 처리 */
+    card.addEventListener('click', e => {
+      if (e.target.classList.contains('bl-link') && !e.target.classList.contains('broken')) {
+        e.stopPropagation();
+        const homeNav = document.querySelector('[data-page="home"]');
+        if (homeNav) setNav(homeNav);
+        openNoteByTitle(e.target.dataset.title);
+      }
+    }, true);
+
+    /* ③ backlink count badge */
+    const bodyEl = card.querySelector('.archive-card-body');
+    if (!bodyEl) return;
+    const existing = bodyEl.querySelector('.archive-backlink-count');
+    if (existing) existing.remove();
+
+    const incoming = Object.entries(notes).filter(([, n]) =>
+      parseBacklinks(n.body || '').includes(title)
+    );
+    const count = incoming.length;
+
+    const badge = document.createElement('div');
+    badge.className = 'archive-backlink-count' + (count > 0 ? ' has-links' : '');
+    badge.textContent = `← ${count} link${count !== 1 ? 's' : ''}`;
+    if (count > 0) {
+      badge.title = incoming.map(([, n]) => n.title).join(', ');
+      badge.addEventListener('click', e => {
+        e.stopPropagation();
+        _showBacklinkSourceToast(title, incoming);
+      });
+    }
+    const dateEl = bodyEl.querySelector('.archive-card-date');
+    if (dateEl) dateEl.insertAdjacentElement('beforebegin', badge);
+  });
+}
+
+function _showBacklinkSourceToast(title, incoming) {
+  const names = incoming.map(([, n]) => `"${n.title}"`).join(', ');
+  showToast(`← ${incoming.length}개 노트가 참조: ${names.slice(0, 60)}`);
+  updateBacklinkPanel(title, incoming.map(([key, note]) => ({ key, note })));
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Feature 4: Right Panel Backlink Panel
+═══════════════════════════════════════════════════════════════ */
+let _backlinksOpen = false;
+
+function toggleBacklinksPanel() {
+  _backlinksOpen = !_backlinksOpen;
+  const list = document.getElementById('backlinks-list');
+  const icon = document.getElementById('backlinks-toggle-icon');
+  if (list) list.style.display = _backlinksOpen ? 'flex' : 'none';
+  if (icon) icon.classList.toggle('open', _backlinksOpen);
+}
+
+function updateBacklinkPanel(forTitle, forLinks) {
+  const section    = document.getElementById('backlinks-section');
+  const list       = document.getElementById('backlinks-list');
+  const countBadge = document.getElementById('backlinks-count-badge');
+  if (!section || !list || !countBadge) return;
+
+  const title = forTitle
+    || (currentNoteKey && notes[currentNoteKey] ? notes[currentNoteKey].title : null)
+    || document.getElementById('note-title')?.value?.trim();
+
+  if (!title) { section.style.display = 'none'; return; }
+
+  const backlinks = forLinks || getBacklinksTo(title);
+  section.style.display = '';
+  countBadge.textContent = backlinks.length;
+  countBadge.style.display = backlinks.length > 0 ? '' : 'none';
+
+  list.innerHTML = '';
+  if (backlinks.length === 0) {
+    list.innerHTML = `<div class="backlinks-empty">← 이 노트를 참조하는 메모 없음</div>`;
+  } else {
+    backlinks.forEach(({ key, note }) => {
+      const item = document.createElement('div');
+      item.className = 'backlink-item';
+      item.innerHTML = `
+        <span class="backlink-item-icon">${note.emoji || '✎'}</span>
+        <span>${note.title || 'Untitled'}</span>
+      `;
+      item.addEventListener('click', () => {
+        const homeNav = document.querySelector('[data-page="home"]');
+        if (homeNav) setNav(homeNav);
+        currentNoteKey = key;
+        document.getElementById('note-title').value  = note.title || '';
+        document.getElementById('note-editor').value = note.body  || '';
+        currentTags = (note.tags || []).slice();
+        renderTagPills();
+        updateWordCount();
+        updateNoteOutlinks();
+        updateBacklinkPanel();
+        switchView('note');
+        addFeedItem('blue', `Opened <b>${note.title || 'Untitled'}</b> via backlink panel`);
+      });
+      list.appendChild(item);
+    });
+  }
+
+  /* 패널이 열려있으면 list도 보임 */
+  list.style.display = _backlinksOpen ? 'flex' : 'none';
+}
+
+/* ─── DOMContentLoaded: backlink init ───────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  initBacklinkAutocomplete();
+});
+
+/* ─── switchView / doSaveNote 후 backlink panel 갱신 ────────── */
+(function _patchSwitchAndSave() {
+  const origSwitch = window.switchView;
+  window.switchView = function (mode) {
+    origSwitch.apply(this, arguments);
+    if (mode === 'note') {
+      updateNoteOutlinks();
+      /* 약간 지연해서 currentNoteKey 반영 후 패널 갱신 */
+      setTimeout(updateBacklinkPanel, 0);
+    }
+  };
+
+  const origSave = window.doSaveNote;
+  window.doSaveNote = function () {
+    origSave.apply(this, arguments);
+    updateNoteOutlinks();
+    updateBacklinkPanel();
+  };
+})();

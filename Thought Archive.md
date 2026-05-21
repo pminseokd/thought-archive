@@ -88,9 +88,10 @@
 ## 7. File Structure
 ```
 Thought Archive/
-├── index.html      — HTML 구조 (data-i18n 속성 포함)
-├── style.css       — 전체 디자인 시스템 (~900줄)
-├── main.js         — 모든 로직 (번역, 설정, 뷰 전환, 리소스 관리 등)
+├── index.html          — HTML 구조 (data-i18n 속성 포함)
+├── style.css           — 전체 디자인 시스템
+├── main.js             — 모든 로직 (번역, 설정, 뷰 전환, 리소스 관리, 백링크 등)
+├── error-log.md        — 오류 발생 이력 수동 기록 (YYYY-MM-DD -- 오류 --- 조치)
 └── Thought Archive.md  — 프로젝트 문서
 ```
 
@@ -149,7 +150,23 @@ Thought Archive/
 
 ---
 
-## 10. Development Notes
+## 10. 로컬 실행 방법
+
+```bash
+# 프로젝트 디렉토리에서 실행
+python3 -m http.server 8080
+```
+
+브라우저 또는 Playwright에서 `http://localhost:8080` 접속.
+
+### Playwright 검증 시
+```python
+await page.goto("http://localhost:8080/")
+```
+
+---
+
+## 11. Development Notes
 - 브라우저 보안(CORS/CSP) 이슈로 인해 로컬 테스트 시 유튜브 임베드 오류가 발생할 수 있음.
 - 이 문제는 추후 Electron 패키징 과정에서 `webSecurity: false` 설정으로 해결 예정.
 - **Focus Mode 버그 수정:** `display: none` → `overflow: hidden + opacity: 0`으로 변경해 CSS Grid 레이아웃 붕괴 방지.
@@ -159,35 +176,72 @@ Thought Archive/
 
 ---
 
-## 11. 반응형 스케일 적용 (2026-05-21)
+## 12. 반응형 스케일 적용 (2026-05-21)
 
 ### 문제
 1600px 고정 해상도 기반 설계로 인해 맥북 14인치(M5) 등 작은 뷰포트에서 화면이 짤리는 현상 발생.
 
-### 해결 방식 — CSS Transform Scale (Letterbox)
+### 해결 방식 — CSS zoom (Letterbox)
 앱 전체를 뷰포트에 맞게 비율 유지하며 자동 축소/확대. 기존 디자인 100% 보존.
+
+> ⚠️ 초기 구현은 `transform: scale()`을 사용했으나, 앱 전체가 단일 GPU 합성 레이어로 묶여 스크롤 시 프레임 드롭이 발생했음. `css zoom`으로 교체 — 레이아웃 레벨 처리이므로 GPU 레이어를 생성하지 않음.
 
 ### 변경 파일
 
-**`index.html`**
-- `<meta name="viewport" content="width=1600">` → `width=device-width, initial-scale=1.0`
-
 **`style.css`**
-- `html, body { width: 1600px; height: 900px; }` → `html/body`를 `100%` + `body`에 `display:flex; align-items:center; justify-content:center` 적용
-- `#app`에 `flex-shrink: 0`, `transform-origin: center center` 추가 (1600×900 고정 유지)
+- `#app`에 `flex-shrink: 0` 유지, `transform-origin` 제거
 
 **`main.js`**
 ```js
 function applyScale() {
-  const app = document.getElementById('app');
   const scale = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
-  app.style.transform = `scale(${scale})`;
+  document.documentElement.style.zoom = String(scale);
 }
 applyScale();
 window.addEventListener('resize', applyScale);
 ```
+- `html` 요소에 `zoom` 적용 — `position: fixed` 오버레이도 올바르게 스케일됨.
 - 뷰포트 대비 스케일 자동 계산, 창 리사이즈 시에도 즉시 반응.
 
 ### 특이사항
 - 16:9 비율이 맞지 않는 경우 letterbox 여백 발생 (의도된 동작).
 - 윈도우·맥 모두 동일하게 동작.
+
+---
+
+## 13. Full-text Search 구현 (2026-05-21)
+
+### 변경 개요
+기존 검색(제목 + 태그만 매칭)을 노트 본문까지 확장하고, 결과 우선순위 정렬 및 snippet 표시 기능을 추가.
+
+### 1) 검색 범위 확대 (`main.js` — `renderResources`)
+- `RESOURCES.filter()` → `RESOURCES.reduce()` 구조로 변경, 각 항목에 우선순위 숫자를 부여 후 `sort()`.
+- 매칭 우선순위: **제목(0) > 태그(1) > 본문(2)**.
+- 노트 본문 접근: `notes['note_' + r.id]?.body`.
+- `#` prefix 검색은 태그 전용으로 기존 동작 유지.
+- 대소문자 무시(`toLowerCase`), 한글 포함 정상 처리.
+
+### 2) 본문 키워드 Snippet 표시 (`main.js` + `style.css`)
+- `getBodySnippet(body, q)` 헬퍼 함수 추가 (`renderResources` 바로 위).
+  - 키워드 앞뒤 30자 추출, 양 끝 잘림 시 `…` 처리.
+  - 내부 HTML 이스케이프(`&`, `<`, `>`) 적용.
+- 본문 매칭 항목(`priority: 2`)에만 snippet div 주입, 제목/태그 매칭은 생략.
+- CSS: `.res-snippet` (10px, `var(--text-lo)`), `.res-snippet-hl` (보라색 bold).
+
+### 3) 검색창 Placeholder i18n (`main.js`)
+- `TRANSLATIONS.en.searchPh` → `'🔍  Search titles, tags, notes…'`
+- `TRANSLATIONS.ko.searchPh` → `'🔍  제목, 태그, 본문 검색…'`
+- `index.html`의 `data-i18n-placeholder="searchPh"` + `applyLanguage()` 기존 구조 그대로 활용.
+
+### 4) 결과 없음 안내 (`main.js` + `style.css`)
+- `TRANSLATIONS`에 `searchNoResult` 키 추가: `en` → `'No results found'`, `ko` → `'검색 결과가 없습니다'`.
+- 결과 0개일 때 하드코딩 문자열 → `T('searchNoResult')` + `.search-no-result` 클래스로 교체.
+- CSS: `.search-no-result` — `text-align: center`, `padding: 24px 20px`, `var(--text-lo)`.
+
+### 변경 파일 요약
+| 파일 | 변경 함수 / 위치 |
+|------|----------------|
+| `main.js` | `TRANSLATIONS` (en/ko) — `searchPh`, `searchNoResult` 키 수정/추가 |
+| `main.js` | `getBodySnippet()` 헬퍼 신규 추가 |
+| `main.js` | `renderResources()` — filter→reduce, snippet 주입, no-result T() 사용 |
+| `style.css` | `.res-snippet`, `.res-snippet-hl`, `.search-no-result` 신규 추가 |

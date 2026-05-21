@@ -179,6 +179,11 @@
             <span><span data-i18n="noteLines">Lines:</span> <b id="line-count">1</b></span>
             <span id="save-status" style="margin-left:auto;" data-i18n="noteStatusNotSaved">Not saved</span>
           </div>
+          <!-- Outgoing Backlinks Row (Feature 2) -->
+          <div class="note-outlinks-row" id="note-outlinks-row" style="display:none">
+            <span class="note-outlinks-label">→ Links</span>
+            <div class="note-outlinks-pills" id="note-outlinks-pills"></div>
+          </div>
           <!-- Tag Input Row -->
           <div class="note-tag-row">
             <div class="note-tag-pills" id="note-tag-pills"></div>
@@ -281,6 +286,19 @@
     <!-- Resource Items -->
     <div class="resource-list" id="resource-list"></div>
 
+    <!-- Backlinks Panel (Feature 4) -->
+    <div class="backlinks-section" id="backlinks-section" style="display:none">
+      <div class="backlinks-header" onclick="toggleBacklinksPanel()">
+        <div class="panel-title">
+          <div class="panel-title-dot" style="background:var(--blue)"></div>
+          <span>Backlinks</span>
+          <span class="backlinks-count-badge" id="backlinks-count-badge" style="display:none">0</span>
+        </div>
+        <span class="backlinks-toggle-icon" id="backlinks-toggle-icon">▾</span>
+      </div>
+      <div class="backlinks-list" id="backlinks-list" style="display:none"></div>
+    </div>
+
     <div class="panel-divider"></div>
 
     <!-- Activity Feed -->
@@ -300,6 +318,9 @@
 
 <!-- Toast -->
 <div id="toast"></div>
+
+<!-- Backlink Autocomplete Dropdown (Feature 1) -->
+<div id="backlink-dropdown"></div>
 
 <!-- ══════════════════════════════════════════════════════════════
      SETTINGS OVERLAY
