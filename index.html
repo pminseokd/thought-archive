@@ -36,25 +36,7 @@
       <span data-i18n="navArchive">Archive</span>
     </div>
 
-    <div class="nav-label" style="margin-top:8px" data-i18n="navResources">Resources</div>
-
-    <div class="nav-item" onclick="filterResources('youtube')">
-      <span class="nav-icon">▶</span>
-      <span data-i18n="navYoutube">YouTube</span>
-    </div>
-    <div class="nav-item" onclick="filterResources('shorts')">
-      <span class="nav-icon">⚡</span>
-      <span data-i18n="navShorts">Shorts</span>
-    </div>
-    <div class="nav-item" onclick="filterResources('website')">
-      <span class="nav-icon">⊕</span>
-      <span data-i18n="navWebsites">Websites</span>
-    </div>
-    <div class="nav-item" onclick="filterResources('note')">
-      <span class="nav-icon">✎</span>
-      <span data-i18n="navNotes">Notes</span>
-    </div>
-    <div class="nav-label" id="tags-nav-label" style="display:none; margin-top:4px">Tags</div>
+    <div class="nav-label" id="tags-nav-label" style="display:none; margin-top:8px">Tags</div>
     <div class="sidebar-tags-wrap" id="sidebar-tags-wrap" style="display:none"></div>
 
     <div class="nav-item" onclick="openSettings(); setNav(this)">
@@ -144,13 +126,62 @@
         <!-- Layer A: Media -->
         <div id="layer-media">
           <div class="media-placeholder" id="media-placeholder">
-            <div class="ph-icon">▶</div>
+            <svg class="ph-svg" viewBox="0 0 96 84" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="phGrad" x1="0" y1="0" x2="96" y2="84" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#8A2BE2"/>
+                  <stop offset="100%" stop-color="#1E90FF"/>
+                </linearGradient>
+                <filter id="phGlow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="1.5" result="blur"/>
+                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+              </defs>
+              <!-- Monitor body -->
+              <rect x="4" y="4" width="88" height="58" rx="7" stroke="url(#phGrad)" stroke-width="2.5" fill="none" filter="url(#phGlow)"/>
+              <!-- Screen fill -->
+              <rect x="10" y="10" width="76" height="46" rx="4" fill="url(#phGrad)" fill-opacity="0.07"/>
+              <!-- Stand neck -->
+              <line x1="48" y1="62" x2="48" y2="74" stroke="url(#phGrad)" stroke-width="2.5" stroke-linecap="round"/>
+              <!-- Stand base -->
+              <path d="M32 74 Q48 70 64 74" stroke="url(#phGrad)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+              <!-- Play circle -->
+              <circle cx="48" cy="33" r="14" stroke="url(#phGrad)" stroke-width="2" fill="none" filter="url(#phGlow)"/>
+              <!-- Play triangle -->
+              <path d="M44.5 27.5 L57 33 L44.5 38.5 Z" fill="url(#phGrad)" filter="url(#phGlow)"/>
+            </svg>
             <p data-i18n="mediaPh1">Select a resource from the list</p>
             <small data-i18n="mediaPh2">YouTube, Shorts, or Websites will appear here</small>
           </div>
           <iframe id="media-iframe" style="display:none;" allowfullscreen
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture">
           </iframe>
+          <!-- iframe 임베드 차단 시 표시되는 커스텀 오버레이 -->
+          <div class="iframe-blocked" id="iframe-blocked" style="display:none">
+            <svg class="iframe-blocked-icon" viewBox="0 0 80 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="blkGrad" x1="0" y1="0" x2="80" y2="72" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#8A2BE2"/>
+                  <stop offset="100%" stop-color="#1E90FF"/>
+                </linearGradient>
+                <filter id="blkGlow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="1.5" result="blur"/>
+                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+              </defs>
+              <!-- 브라우저 창 아웃라인 -->
+              <rect x="4" y="4" width="72" height="54" rx="7" stroke="url(#blkGrad)" stroke-width="2" fill="none" filter="url(#blkGlow)"/>
+              <line x1="4" y1="17" x2="76" y2="17" stroke="url(#blkGrad)" stroke-width="1.5"/>
+              <circle cx="14" cy="11" r="2.5" fill="url(#blkGrad)"/>
+              <circle cx="23" cy="11" r="2.5" fill="url(#blkGrad)"/>
+              <!-- X 표시 -->
+              <line x1="27" y1="28" x2="53" y2="52" stroke="url(#blkGrad)" stroke-width="2.5" stroke-linecap="round" filter="url(#blkGlow)"/>
+              <line x1="53" y1="28" x2="27" y2="52" stroke="url(#blkGrad)" stroke-width="2.5" stroke-linecap="round" filter="url(#blkGlow)"/>
+            </svg>
+            <p class="iframe-blocked-title">이 사이트는 임베드를 허용하지 않습니다</p>
+            <p class="iframe-blocked-url" id="iframe-blocked-url"></p>
+            <button class="iframe-blocked-btn" onclick="openExternal()">⧉ 브라우저에서 열기</button>
+          </div>
         </div>
 
         <!-- Layer B: Note -->
@@ -261,7 +292,6 @@
         <div class="panel-title-dot"></div>
         <span data-i18n="panelResourceList">Resource List</span>
       </div>
-      <div class="panel-action" onclick="addResource()" data-i18n="panelAdd">＋ Add</div>
     </div>
 
     <!-- Search -->
@@ -299,19 +329,7 @@
       <div class="backlinks-list" id="backlinks-list" style="display:none"></div>
     </div>
 
-    <div class="panel-divider"></div>
-
-    <!-- Activity Feed -->
-    <div class="feed-section">
-      <div class="panel-header" style="border-bottom:none; padding-bottom:4px;">
-        <div class="panel-title">
-          <div class="panel-title-dot"></div>
-          <span data-i18n="panelActivityFeed">Activity Feed</span>
-          <span class="live-dot" style="margin-left:4px;"></span>
-        </div>
-      </div>
-      <div class="feed-list" id="feed-list"></div>
-    </div>
+    <div class="feed-list" id="feed-list" style="display:none"></div>
   </aside>
 
 </div>

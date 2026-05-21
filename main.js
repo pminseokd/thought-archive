@@ -133,14 +133,13 @@ function applyLanguage(lang) {
     if (ontopLabel) ontopLabel.textContent = settings.alwaysOnTop ? T('settOnTopOn') : T('settOnTopOff');
   }
 
-  const ss = document.getElementById('save-status');
+  const ss = DOM.saveStatus;
   if (ss && (ss.textContent === 'Not saved' || ss.textContent === '미저장' ||
              ss.textContent === 'Auto-save on' || ss.textContent === '자동저장 켜짐')) {
     ss.textContent = currentNoteKey ? T('noteStatusAutoSave') : T('noteStatusNotSaved');
   }
 
-  const main = document.getElementById('main');
-  if (main && main.dataset.view === 'archive') renderArchive();
+  if (DOM.main && DOM.main.dataset.view === 'archive') renderArchive();
 }
 
 /* ─── Data ──────────────────────────────────────────────────────── */
@@ -185,8 +184,31 @@ let archiveColorFilter = 'all';
 let currentTags        = [];
 let activeTags         = [];
 
+let _backlinkIndexCache = null;
+
+const DOM = {};
+
 /* ─── Init ──────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
+  Object.assign(DOM, {
+    noteEditor:       document.getElementById('note-editor'),
+    noteTitle:        document.getElementById('note-title'),
+    saveStatus:       document.getElementById('save-status'),
+    urlBar:           document.getElementById('url-bar'),
+    searchInput:      document.getElementById('search-input'),
+    settingsOverlay:  document.getElementById('settings-overlay'),
+    savePanel:        document.getElementById('save-confirm-panel'),
+    shortcutHelp:     document.getElementById('shortcut-help'),
+    mediaIframe:      document.getElementById('media-iframe'),
+    mediaPlaceholder: document.getElementById('media-placeholder'),
+    feedList:         document.getElementById('feed-list'),
+    main:             document.getElementById('main'),
+    backlinkDropdown:  document.getElementById('backlink-dropdown'),
+    toast:             document.getElementById('toast'),
+    iframeBlocked:     document.getElementById('iframe-blocked'),
+    iframeBlockedUrl:  document.getElementById('iframe-blocked-url'),
+  });
+
   renderResources();
   renderFeed(INITIAL_FEED);
   updateWordCount();
@@ -194,17 +216,15 @@ document.addEventListener('DOMContentLoaded', () => {
   updateStatCounters();
   renderSidebarTags();
 
-  document.getElementById('note-editor').addEventListener('input', updateWordCount);
+  DOM.noteEditor.addEventListener('input', updateWordCount);
 
-  /* URL 바 */
-  const urlBar = document.getElementById('url-bar');
-  urlBar.addEventListener('keydown', e => { if (e.key === 'Enter') loadUrl(); });
-  urlBar.addEventListener('paste', () => {
+  DOM.urlBar.addEventListener('keydown', e => { if (e.key === 'Enter') loadUrl(); });
+  DOM.urlBar.addEventListener('paste', () => {
     setTimeout(() => {
-      const val = urlBar.value;
+      const val = DOM.urlBar.value;
       const converted = toEmbedUrl(val);
       if (converted !== val) {
-        urlBar.value = converted;
+        DOM.urlBar.value = converted;
         showToast('🔗  YouTube URL 자동 변환됨');
       }
     }, 0);
@@ -238,17 +258,16 @@ function setNav(el) {
 }
 
 function navigateTo(page) {
-  const main = document.getElementById('main');
   if (page === 'archive') {
-    main.dataset.view = 'archive';
+    DOM.main.dataset.view = 'archive';
     renderArchive();
     addFeedItem('dim', 'Opened <b>Archive</b> view');
   } else if (page === 'analytics') {
-    main.dataset.view = 'analytics';
+    DOM.main.dataset.view = 'analytics';
     renderAnalytics();
     addFeedItem('blue', 'Opened <b>Analytics</b> view');
   } else {
-    main.dataset.view = 'home';
+    DOM.main.dataset.view = 'home';
   }
   renderSidebarTags();
 }
@@ -404,8 +423,8 @@ function renderArchive() {
         const homeNav = document.querySelector('[data-page="home"]');
         if (homeNav) setNav(homeNav);
         currentNoteKey = key;
-        document.getElementById('note-title').value = note.title || '';
-        document.getElementById('note-editor').value = note.body || '';
+        DOM.noteTitle.value = note.title || '';
+        DOM.noteEditor.value = note.body || '';
         currentTags = (note.tags || []).slice();
         renderTagPills();
         updateWordCount();
@@ -414,6 +433,7 @@ function renderArchive() {
       });
       grid.appendChild(card);
     });
+  _enhanceArchiveCards();
 }
 
 /* ─── Body Snippet Helper ────────────────────────────────────────── */
@@ -504,8 +524,8 @@ function onResourceClick(r) {
   if (r.type === 'note') {
     currentNoteKey = 'note_' + r.id;
     const saved = notes[currentNoteKey] || { title: r.name, body: '' };
-    document.getElementById('note-title').value = saved.title;
-    document.getElementById('note-editor').value = saved.body;
+    DOM.noteTitle.value = saved.title;
+    DOM.noteEditor.value = saved.body;
     currentTags = (saved.tags || []).slice();
     renderTagPills();
     updateWordCount();
@@ -518,14 +538,19 @@ function onResourceClick(r) {
 }
 
 function loadResource(r) {
-  const iframe      = document.getElementById('media-iframe');
-  const placeholder = document.getElementById('media-placeholder');
-  const urlBar      = document.getElementById('url-bar');
-  const embedUrl    = toEmbedUrl(r.url);
-  urlBar.value = embedUrl;
-  placeholder.style.display = 'none';
-  iframe.style.display = 'block';
-  iframe.src = embedUrl;
+  const embedUrl = toEmbedUrl(r.url);
+  DOM.urlBar.value = embedUrl;
+  DOM.mediaPlaceholder.style.display = 'none';
+  if (r.type === 'website') {
+    /* 브라우저 에러 페이지 방지: iframe에 URL 로드하지 않음 */
+    DOM.mediaIframe.src = 'about:blank';
+    DOM.mediaIframe.style.display = 'none';
+    _setupIframeBlockDetect(embedUrl, false);
+  } else {
+    DOM.mediaIframe.style.display = 'block';
+    DOM.mediaIframe.src = embedUrl;
+    _setupIframeBlockDetect(embedUrl, true);
+  }
   addFeedItem('blue', `Loaded <b>${r.name}</b>`);
   showToast(`▶  ${r.name} loaded`);
 }
@@ -537,26 +562,39 @@ function switchView(mode) {
   const layerNote  = document.getElementById('layer-note');
   const tabMedia   = document.getElementById('tab-media');
   const tabNote    = document.getElementById('tab-note');
-  const urlBar     = document.getElementById('url-bar');
 
   if (mode === 'media') {
     layerMedia.classList.remove('hidden');
     layerNote.classList.add('hidden');
     tabMedia.classList.add('active');
     tabNote.classList.remove('active');
-    urlBar.style.display = '';
+    DOM.urlBar.style.display = '';
   } else {
     layerNote.classList.remove('hidden');
     layerMedia.classList.add('hidden');
     tabNote.classList.add('active');
     tabMedia.classList.remove('active');
-    urlBar.style.display = 'none';
-    document.getElementById('note-editor').focus();
+    DOM.urlBar.style.display = 'none';
+    DOM.noteEditor.focus();
     if (!currentNoteKey) {
       currentNoteKey = 'note_new_' + Date.now();
       currentTags = [];
       renderTagPills();
     }
+    updateNoteOutlinks();
+    setTimeout(updateBacklinkPanel, 0);
+  }
+}
+
+/* ─── iframe Block Detection ────────────────────────────────────── */
+function _setupIframeBlockDetect(url, isEmbed) {
+  if (isEmbed) {
+    /* YouTube embed 등 정상 로드 가능한 URL */
+    DOM.iframeBlocked.style.display = 'none';
+  } else {
+    /* 일반 웹사이트: 대부분 X-Frame-Options로 차단 → 즉시 오버레이 */
+    DOM.iframeBlockedUrl.textContent = url;
+    DOM.iframeBlocked.style.display = 'flex';
   }
 }
 
@@ -582,21 +620,26 @@ function toEmbedUrl(raw) {
 
 /* ─── URL Bar ────────────────────────────────────────────────────── */
 function loadUrl() {
-  const raw = document.getElementById('url-bar').value.trim();
+  const raw = DOM.urlBar.value.trim();
   if (!raw) return;
   const url = toEmbedUrl(raw);
-  document.getElementById('url-bar').value = url;
-  const iframe      = document.getElementById('media-iframe');
-  const placeholder = document.getElementById('media-placeholder');
-  placeholder.style.display = 'none';
-  iframe.style.display = 'block';
-  iframe.src = url;
+  DOM.urlBar.value = url;
+  DOM.mediaPlaceholder.style.display = 'none';
+  const isEmbed = url.includes('youtube.com/embed/');
+  if (isEmbed) {
+    DOM.mediaIframe.style.display = 'block';
+    DOM.mediaIframe.src = url;
+  } else {
+    DOM.mediaIframe.src = 'about:blank';
+    DOM.mediaIframe.style.display = 'none';
+  }
+  _setupIframeBlockDetect(url, isEmbed);
   switchView('media');
   addFeedItem('blue', `URL loaded: <b>${url.slice(0,38)}…</b>`);
 }
 
 function openExternal() {
-  const url = document.getElementById('url-bar').value.trim();
+  const url = DOM.urlBar.value.trim();
   if (url) window.open(url, '_blank');
 }
 
@@ -610,7 +653,7 @@ function showSavePanel() {
   selectedColor   = (existing && existing.color) || '#8A2BE2';
   selectedEmoji   = (existing && existing.emoji) || '';
   renderSavePanel();
-  document.getElementById('save-confirm-panel').classList.add('open');
+  DOM.savePanel.classList.add('open');
 }
 
 function renderSavePanel() {
@@ -641,17 +684,17 @@ function renderSavePanel() {
 }
 
 function confirmSave() {
-  document.getElementById('save-confirm-panel').classList.remove('open');
+  DOM.savePanel.classList.remove('open');
   doSaveNote(selectedColor, selectedEmoji);
 }
 
 function cancelSave() {
-  document.getElementById('save-confirm-panel').classList.remove('open');
+  DOM.savePanel.classList.remove('open');
 }
 
 function doSaveNote(color, emoji) {
-  const title = document.getElementById('note-title').value || 'Untitled';
-  const body  = document.getElementById('note-editor').value;
+  const title = DOM.noteTitle.value || 'Untitled';
+  const body  = DOM.noteEditor.value;
   if (!currentNoteKey) currentNoteKey = 'note_new_' + Date.now();
 
   if (currentNoteKey.startsWith('note_new_')) {
@@ -682,23 +725,26 @@ function doSaveNote(color, emoji) {
     emoji: emoji || '',
     tags:  [...currentTags]
   };
+  invalidateBacklinkIndex();
   localStorage.setItem('ta_notes', JSON.stringify(notes));
   updateStatCounters();
   renderSidebarTags();
 
-  document.getElementById('save-status').textContent = T('noteSavedOk');
-  document.getElementById('save-status').style.color = 'var(--blue)';
+  DOM.saveStatus.textContent = T('noteSavedOk');
+  DOM.saveStatus.style.color = 'var(--blue)';
   addFeedItem('purple', `Note <b>${title}</b> saved`);
   showToast(`💾  "${title}" saved locally`);
   setTimeout(() => {
-    document.getElementById('save-status').textContent = T('noteStatusAutoSave');
-    document.getElementById('save-status').style.color = '';
+    DOM.saveStatus.textContent = T('noteStatusAutoSave');
+    DOM.saveStatus.style.color = '';
   }, 2500);
+  updateNoteOutlinks();
+  updateBacklinkPanel();
 }
 
 /* ─── Word Count ─────────────────────────────────────────────────── */
 function updateWordCount() {
-  const text  = document.getElementById('note-editor').value;
+  const text  = DOM.noteEditor.value;
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   document.getElementById('word-count').textContent = words;
   document.getElementById('char-count').textContent = text.length;
@@ -706,7 +752,7 @@ function updateWordCount() {
 }
 
 function fmt(cmd) {
-  const ta    = document.getElementById('note-editor');
+  const ta    = DOM.noteEditor;
   const start = ta.selectionStart;
   const end   = ta.selectionEnd;
   const sel   = ta.value.slice(start, end);
@@ -725,7 +771,7 @@ function fmt(cmd) {
 }
 
 function insertMd(md) {
-  const ta    = document.getElementById('note-editor');
+  const ta    = DOM.noteEditor;
   const start = ta.selectionStart;
   const end   = ta.selectionEnd;
   ta.value    = ta.value.slice(0, start) + md + ta.value.slice(end);
@@ -822,9 +868,8 @@ function toggleSidebarTag(tag) {
 }
 
 function applyTagFilter() {
-  renderResources(activeFilter, document.getElementById('search-input').value);
-  const main = document.getElementById('main');
-  if (main && main.dataset.view === 'archive') renderArchive();
+  renderResources(activeFilter, DOM.searchInput.value);
+  if (DOM.main && DOM.main.dataset.view === 'archive') renderArchive();
 }
 
 /* ─── Archive Color Filter ───────────────────────────────────────── */
@@ -837,7 +882,7 @@ function setArchiveColorFilter(el, color) {
 
 /* ─── Search Autocomplete ────────────────────────────────────────── */
 function filterBySearch() {
-  const q = document.getElementById('search-input').value;
+  const q = DOM.searchInput.value;
   if (q.startsWith('#')) {
     renderTagAutocomplete(q.slice(1));
   } else {
@@ -862,7 +907,7 @@ function renderTagAutocomplete(prefix) {
     item.className = 'tag-ac-item';
     item.textContent = tag;
     item.addEventListener('mousedown', () => {
-      document.getElementById('search-input').value = tag;
+      DOM.searchInput.value = tag;
       hideTagAutocomplete();
       renderResources(activeFilter, tag);
     });
@@ -881,7 +926,7 @@ function setPill(el, filter) {
   document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
   activeFilter = filter;
-  renderResources(filter, document.getElementById('search-input').value);
+  renderResources(filter, DOM.searchInput.value);
 }
 
 function filterResources(type) {
@@ -928,22 +973,22 @@ function deleteResource(id) {
 
   if (r.type === 'note') {
     delete notes['note_' + id];
+    invalidateBacklinkIndex();
     localStorage.setItem('ta_notes', JSON.stringify(notes));
     if (currentNoteKey === 'note_' + id) {
       currentNoteKey = null;
       currentTags = [];
       renderTagPills();
-      document.getElementById('note-title').value = '';
-      document.getElementById('note-editor').value = '';
+      DOM.noteTitle.value = '';
+      DOM.noteEditor.value = '';
       updateWordCount();
     }
   }
 
   if (activeResId === id) {
     activeResId = null;
-    const iframe = document.getElementById('media-iframe');
-    iframe.src = ''; iframe.style.display = 'none';
-    document.getElementById('media-placeholder').style.display = '';
+    DOM.mediaIframe.src = ''; DOM.mediaIframe.style.display = 'none';
+    DOM.mediaPlaceholder.style.display = '';
   }
 
   RESOURCES.splice(idx, 1);
@@ -956,7 +1001,7 @@ function deleteResource(id) {
 
 /* ─── Feed ───────────────────────────────────────────────────────── */
 function renderFeed(items) {
-  const feed = document.getElementById('feed-list');
+  const feed = DOM.feedList;
   feed.innerHTML = '';
   items.forEach(i => {
     const id  = 'fi_' + Date.now() + '_' + Math.random().toString(36).slice(2);
@@ -973,7 +1018,7 @@ function renderFeed(items) {
 }
 
 function addFeedItem(dot, text) {
-  const feed = document.getElementById('feed-list');
+  const feed = DOM.feedList;
   const id   = 'fi_' + Date.now();
   const div  = document.createElement('div');
   div.className = 'feed-item';
@@ -1001,7 +1046,7 @@ function deleteFeedItem(id) {
 /* ─── Toast ──────────────────────────────────────────────────────── */
 let toastTimer;
 function showToast(msg) {
-  const t = document.getElementById('toast');
+  const t = DOM.toast;
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toastTimer);
@@ -1044,17 +1089,17 @@ function saveSetting(key, value) {
 }
 
 function openSettings() {
-  const el = document.getElementById('settings-overlay');
+  const el = DOM.settingsOverlay;
   el.classList.add('visible');
   requestAnimationFrame(() => el.classList.add('open'));
 }
 function closeSettings() {
-  const el = document.getElementById('settings-overlay');
+  const el = DOM.settingsOverlay;
   el.classList.remove('open');
   el.addEventListener('transitionend', () => el.classList.remove('visible'), { once: true });
 }
 function overlayClickClose(e) {
-  if (e.target === document.getElementById('settings-overlay')) closeSettings();
+  if (e.target === DOM.settingsOverlay) closeSettings();
 }
 
 function applyTheme(isLight) {
@@ -1091,15 +1136,15 @@ function scheduleAutoSave(secs) {
   clearInterval(autoSaveTimer);
   if (secs > 0) {
     autoSaveTimer = setInterval(() => {
-      const body = document.getElementById('note-editor').value;
+      const body = DOM.noteEditor.value;
       if (body.trim() && currentNoteKey) {
         const existing = notes[currentNoteKey] || {};
         doSaveNote(existing.color || '#8A2BE2', existing.emoji || '');
-        document.getElementById('save-status').textContent = T('noteAutoSaved');
-        document.getElementById('save-status').style.color = 'var(--purple)';
+        DOM.saveStatus.textContent = T('noteAutoSaved');
+        DOM.saveStatus.style.color = 'var(--purple)';
         setTimeout(() => {
-          document.getElementById('save-status').textContent = T('noteStatusAutoSave');
-          document.getElementById('save-status').style.color = '';
+          DOM.saveStatus.textContent = T('noteStatusAutoSave');
+          DOM.saveStatus.style.color = '';
         }, 2000);
       }
     }, secs * 1000);
@@ -1114,14 +1159,14 @@ function applyAlwaysOnTop(on) {
 }
 
 function clearFeed() {
-  document.getElementById('feed-list').innerHTML =
+  DOM.feedList.innerHTML =
     `<div style="text-align:center;padding:24px 0;color:var(--text-lo);font-size:11px;">${T('feedCleared')}</div>`;
   showToast('✦  Activity feed cleared');
 }
 
 function exportMarkdown() {
-  const title = document.getElementById('note-title').value || 'Untitled';
-  const body  = document.getElementById('note-editor').value;
+  const title = DOM.noteTitle.value || 'Untitled';
+  const body  = DOM.noteEditor.value;
   if (!body.trim()) { showToast('⚠  Nothing to export — note is empty'); return; }
   const md   = `# ${title}\n\n${body}\n\n---\n_Exported from Thought Archive · ${new Date().toLocaleString()}_\n`;
   const blob = new Blob([md], { type: 'text/markdown' });
@@ -1209,26 +1254,24 @@ function toggleFocusMode() {
 
 /* ─── Shortcut Help ──────────────────────────────────────────────── */
 function showShortcutHelp() {
-  const el = document.getElementById('shortcut-help');
+  const el = DOM.shortcutHelp;
   el.classList.add('visible');
   requestAnimationFrame(() => el.classList.add('open'));
 }
 function closeShortcutHelp() {
-  const el = document.getElementById('shortcut-help');
+  const el = DOM.shortcutHelp;
   el.classList.remove('open');
   el.addEventListener('transitionend', () => el.classList.remove('visible'), { once: true });
 }
 
 /* ─── 키보드 단축키 ──────────────────────────────────────────────── */
 document.addEventListener('keydown', e => {
-  const overlay  = document.getElementById('settings-overlay');
-  const helpOpen = document.getElementById('shortcut-help').classList.contains('open');
+  const helpOpen = DOM.shortcutHelp.classList.contains('open');
   const inInput  = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
 
   if (e.key === 'Escape') {
-    const savePanel = document.getElementById('save-confirm-panel');
-    if (savePanel && savePanel.classList.contains('open')) { cancelSave(); return; }
-    if (overlay.classList.contains('open'))  { closeSettings();     return; }
+    if (DOM.savePanel && DOM.savePanel.classList.contains('open')) { cancelSave(); return; }
+    if (DOM.settingsOverlay.classList.contains('open'))  { closeSettings();     return; }
     if (helpOpen)                             { closeShortcutHelp(); return; }
     if (focusMode)                            { toggleFocusMode();   return; }
     return;
@@ -1249,12 +1292,12 @@ document.addEventListener('keydown', e => {
       case 'k':
         e.preventDefault();
         switchView('media');
-        setTimeout(() => { const ub = document.getElementById('url-bar'); ub.focus(); ub.select(); }, 50);
+        setTimeout(() => { const ub = DOM.urlBar; ub.focus(); ub.select(); }, 50);
         break;
       case 'f':
         if (e.shiftKey) {
           e.preventDefault();
-          document.getElementById('search-input').focus();
+          DOM.searchInput.focus();
         } else {
           e.preventDefault();
           toggleFocusMode();
@@ -1315,6 +1358,7 @@ function renderBodyWithLinks(body) {
 }
 
 function buildBacklinkIndex() {
+  if (_backlinkIndexCache) return _backlinkIndexCache;
   const idx = {};
   Object.entries(notes).forEach(([key, note]) => {
     parseBacklinks(note.body || '').forEach(title => {
@@ -1322,7 +1366,12 @@ function buildBacklinkIndex() {
       idx[title].push(key);
     });
   });
+  _backlinkIndexCache = idx;
   return idx;
+}
+
+function invalidateBacklinkIndex() {
+  _backlinkIndexCache = null;
 }
 
 function getBacklinksTo(title) {
@@ -1340,7 +1389,7 @@ function escapeRe(s) {
 let _blSelected = -1;
 
 function initBacklinkAutocomplete() {
-  const editor = document.getElementById('note-editor');
+  const editor = DOM.noteEditor;
   if (!editor) return;
   editor.addEventListener('input',  _onBlInput);
   editor.addEventListener('keydown', _onBlKeydown);
@@ -1368,7 +1417,7 @@ function _onBlInput() {
 }
 
 function _onBlKeydown(e) {
-  const dd = document.getElementById('backlink-dropdown');
+  const dd = DOM.backlinkDropdown;
   if (!dd || !dd.classList.contains('open')) return;
   const items = dd.querySelectorAll('.bl-item');
   if (e.key === 'ArrowDown') {
@@ -1393,7 +1442,7 @@ function _updateBlSelection(items) {
 }
 
 function _showBlDropdown(titles, query, editor) {
-  const dd = document.getElementById('backlink-dropdown');
+  const dd = DOM.backlinkDropdown;
   if (!dd) return;
   _blSelected = -1;
   dd.innerHTML = '';
@@ -1419,13 +1468,13 @@ function _showBlDropdown(titles, query, editor) {
 }
 
 function hideBacklinkDropdown() {
-  const dd = document.getElementById('backlink-dropdown');
+  const dd = DOM.backlinkDropdown;
   if (dd) dd.classList.remove('open');
   _blSelected = -1;
 }
 
 function insertBacklink(title) {
-  const editor = document.getElementById('note-editor');
+  const editor = DOM.noteEditor;
   if (!editor) return;
   const val     = editor.value;
   const pos     = editor.selectionStart;
@@ -1445,7 +1494,7 @@ function insertBacklink(title) {
    Feature 2: Outgoing Links Preview (Note View 하단 row)
 ═══════════════════════════════════════════════════════════════ */
 function updateNoteOutlinks() {
-  const editor  = document.getElementById('note-editor');
+  const editor  = DOM.noteEditor;
   const row     = document.getElementById('note-outlinks-row');
   const pillsEl = document.getElementById('note-outlinks-pills');
   if (!editor || !row || !pillsEl) return;
@@ -1471,8 +1520,8 @@ function openNoteByTitle(title) {
   if (!entry) { showToast(`⚠  "${title}" 노트를 찾을 수 없습니다`); return; }
   const [key, note] = entry;
   currentNoteKey = key;
-  document.getElementById('note-title').value  = note.title || '';
-  document.getElementById('note-editor').value = note.body  || '';
+  DOM.noteTitle.value  = note.title || '';
+  DOM.noteEditor.value = note.body  || '';
   currentTags = (note.tags || []).slice();
   renderTagPills();
   updateWordCount();
@@ -1484,19 +1533,12 @@ function openNoteByTitle(title) {
 
 /* ═══════════════════════════════════════════════════════════════
    Feature 3: Archive 카드 Backlink Count
-   (renderArchive를 패치하여 카드 DOM에 count + 링크 렌더링 추가)
 ═══════════════════════════════════════════════════════════════ */
-(function _patchRenderArchive() {
-  const orig = window.renderArchive;
-  window.renderArchive = function () {
-    orig.apply(this, arguments);
-    _enhanceArchiveCards();
-  };
-})();
-
 function _enhanceArchiveCards() {
   const grid = document.getElementById('archive-grid');
   if (!grid) return;
+
+  const idx = buildBacklinkIndex();
 
   grid.querySelectorAll('.archive-card').forEach(card => {
     const titleEl = card.querySelector('.archive-card-title');
@@ -1529,9 +1571,8 @@ function _enhanceArchiveCards() {
     const existing = bodyEl.querySelector('.archive-backlink-count');
     if (existing) existing.remove();
 
-    const incoming = Object.entries(notes).filter(([, n]) =>
-      parseBacklinks(n.body || '').includes(title)
-    );
+    const incomingKeys = idx[title] || [];
+    const incoming = incomingKeys.map(key => ({ key, note: notes[key] })).filter(x => x.note);
     const count = incoming.length;
 
     const badge = document.createElement('div');
@@ -1576,7 +1617,7 @@ function updateBacklinkPanel(forTitle, forLinks) {
 
   const title = forTitle
     || (currentNoteKey && notes[currentNoteKey] ? notes[currentNoteKey].title : null)
-    || document.getElementById('note-title')?.value?.trim();
+    || DOM.noteTitle?.value?.trim();
 
   if (!title) { section.style.display = 'none'; return; }
 
@@ -1600,8 +1641,8 @@ function updateBacklinkPanel(forTitle, forLinks) {
         const homeNav = document.querySelector('[data-page="home"]');
         if (homeNav) setNav(homeNav);
         currentNoteKey = key;
-        document.getElementById('note-title').value  = note.title || '';
-        document.getElementById('note-editor').value = note.body  || '';
+        DOM.noteTitle.value  = note.title || '';
+        DOM.noteEditor.value = note.body  || '';
         currentTags = (note.tags || []).slice();
         renderTagPills();
         updateWordCount();
@@ -1623,22 +1664,3 @@ document.addEventListener('DOMContentLoaded', () => {
   initBacklinkAutocomplete();
 });
 
-/* ─── switchView / doSaveNote 후 backlink panel 갱신 ────────── */
-(function _patchSwitchAndSave() {
-  const origSwitch = window.switchView;
-  window.switchView = function (mode) {
-    origSwitch.apply(this, arguments);
-    if (mode === 'note') {
-      updateNoteOutlinks();
-      /* 약간 지연해서 currentNoteKey 반영 후 패널 갱신 */
-      setTimeout(updateBacklinkPanel, 0);
-    }
-  };
-
-  const origSave = window.doSaveNote;
-  window.doSaveNote = function () {
-    origSave.apply(this, arguments);
-    updateNoteOutlinks();
-    updateBacklinkPanel();
-  };
-})();
