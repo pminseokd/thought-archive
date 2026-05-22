@@ -90,7 +90,10 @@
 Thought Archive/
 ├── index.html          — HTML 구조 (data-i18n 속성 포함)
 ├── style.css           — 전체 디자인 시스템
-├── main.js             — 모든 로직 (번역, 설정, 뷰 전환, 리소스 관리, 백링크 등)
+├── app.js              — 렌더러 로직 전체 (구 main.js, Electron 전환 시 rename)
+├── main.js             — Electron 메인 프로세스 (BrowserWindow 생성, webviewTag 활성화)
+├── package.json        — Electron 의존성 및 npm start 스크립트
+├── node_modules/       — Electron 패키지
 ├── error-log.md        — 오류 발생 이력 수동 기록 (YYYY-MM-DD -- 오류 --- 조치)
 └── Thought Archive.md  — 프로젝트 문서
 ```
@@ -152,16 +155,20 @@ Thought Archive/
 
 ## 10. 로컬 실행 방법
 
+### Electron 앱으로 실행 (권장)
 ```bash
-# 프로젝트 디렉토리에서 실행
-python3 -m http.server 8080
+npm start
 ```
 
-브라우저 또는 Playwright에서 `http://localhost:8080` 접속.
+### 브라우저로 실행 (테스트용)
+```bash
+python3 -m http.server 7788
+```
+브라우저에서 `http://localhost:7788` 접속.
 
 ### Playwright 검증 시
-```python
-await page.goto("http://localhost:8080/")
+```javascript
+await page.goto("http://localhost:7788/")
 ```
 
 ---
@@ -241,7 +248,91 @@ window.addEventListener('resize', applyScale);
 ### 변경 파일 요약
 | 파일 | 변경 함수 / 위치 |
 |------|----------------|
-| `main.js` | `TRANSLATIONS` (en/ko) — `searchPh`, `searchNoResult` 키 수정/추가 |
-| `main.js` | `getBodySnippet()` 헬퍼 신규 추가 |
-| `main.js` | `renderResources()` — filter→reduce, snippet 주입, no-result T() 사용 |
+| `app.js` | `TRANSLATIONS` (en/ko) — `searchPh`, `searchNoResult` 키 수정/추가 |
+| `app.js` | `getBodySnippet()` 헬퍼 신규 추가 |
+| `app.js` | `renderResources()` — filter→reduce, snippet 주입, no-result T() 사용 |
 | `style.css` | `.res-snippet`, `.res-snippet-hl`, `.search-no-result` 신규 추가 |
+
+---
+
+## 14. 코드 최적화 (2026-05-21)
+
+### 백링크 인덱스 캐싱
+- `buildBacklinkIndex()` 호출 시 `_backlinkIndexCache`에 결과 저장, 이후 호출은 O(1) 반환.
+- `doSaveNote()` / `deleteResource()` (note 타입)에서 `invalidateBacklinkIndex()` 호출로 캐시 무효화.
+- `_enhanceArchiveCards()`: 카드 루프 진입 전 인덱스 1회 빌드 → 각 카드 O(1) 조회. 기존 O(카드 × notes) → O(notes + 카드).
+
+### Monkey-patching 제거
+기존 `_patchRenderArchive()`, `_patchSwitchAndSave()` IIFE 패치 블록 제거.
+- `renderArchive()` 끝에 `_enhanceArchiveCards()` 직접 호출
+- `switchView()` note 분기 끝에 `updateNoteOutlinks()` + `setTimeout(updateBacklinkPanel, 0)` 직접 호출
+- `doSaveNote()` 끝에 `updateNoteOutlinks()` + `updateBacklinkPanel()` 직접 호출
+
+### DOM 캐시 (`const DOM = {}`)
+DOMContentLoaded 시작 시 14개 자주 쓰이는 요소를 `DOM` 객체에 한 번만 저장.
+
+| DOM 키 | element id |
+|--------|-----------|
+| `DOM.noteEditor` | `#note-editor` |
+| `DOM.noteTitle` | `#note-title` |
+| `DOM.saveStatus` | `#save-status` |
+| `DOM.urlBar` | `#url-bar` |
+| `DOM.searchInput` | `#search-input` |
+| `DOM.settingsOverlay` | `#settings-overlay` |
+| `DOM.savePanel` | `#save-confirm-panel` |
+| `DOM.shortcutHelp` | `#shortcut-help` |
+| `DOM.mediaIframe` | `#media-iframe` |
+| `DOM.mediaPlaceholder` | `#media-placeholder` |
+| `DOM.feedList` | `#feed-list` |
+| `DOM.main` | `#main` |
+| `DOM.backlinkDropdown` | `#backlink-dropdown` |
+| `DOM.toast` | `#toast` |
+| `DOM.iframeBlocked` | `#iframe-blocked` |
+| `DOM.iframeBlockedUrl` | `#iframe-blocked-url` |
+
+---
+
+## 15. UI 정리 (2026-05-21)
+
+- 좌측 사이드바 **Resources 섹션 제거** (YouTube/Shorts/Websites/Notes 필터 링크 — 우측 pill과 중복)
+- 우측 패널 헤더 **＋ Add 버튼 제거** (상단 topbar 버튼으로 통일)
+- **Activity Feed 숨김** 처리 (`display:none`)
+- 미디어 placeholder **▶ 텍스트 → SVG 아이콘** 교체 (모니터+플레이 버튼, purple→blue 그라디언트)
+
+---
+
+## 16. 웹사이트 iframe 차단 UX (2026-05-21)
+
+### 문제
+일반 웹사이트(`X-Frame-Options: DENY`)를 iframe에 로드 시 브라우저 기본 에러 페이지 표시.
+
+### 해결
+- `website` 타입 리소스 클릭 시: iframe에 URL 로드 안 함 (`about:blank`), 커스텀 오버레이 즉시 표시.
+- URL 바 직접 입력 시: YouTube embed URL(`youtube.com/embed/`) 여부로 분기, 비-YouTube는 동일 처리.
+- 오버레이 UI: 브라우저(X) SVG 아이콘 + "이 사이트는 임베드를 허용하지 않습니다" + URL + "⧉ 브라우저에서 열기" 버튼.
+
+### 관련 함수
+- `_setupIframeBlockDetect(url, isEmbed)` — `app.js`
+- `#iframe-blocked` / `#iframe-blocked-url` — `index.html`
+- `.iframe-blocked`, `.iframe-blocked-btn` 등 — `style.css`
+
+---
+
+## 17. Electron 마이그레이션 (2026-05-21 진행 중)
+
+### 목표
+iframe의 `X-Frame-Options` 제한 없이 모든 웹사이트를 앱 내에서 직접 열기 위해 Electron `<webview>` 태그로 전환.
+
+### 완료된 작업 (Step 1)
+- `main.js` → `app.js` rename (Electron 메인 프로세스 파일명 충돌 방지)
+- `index.html` script src 업데이트 (`app.js`)
+- `package.json` 생성 (`electron ^35`, `"main": "main.js"`, `"start": "electron ."`)
+- `npm install` — Electron 설치 완료
+- `main.js` (Electron 메인 프로세스) 생성:
+  - `BrowserWindow` 1600×900, `minWidth: 1200`, `minHeight: 700`
+  - `webPreferences: { webviewTag: true, contextIsolation: false }`
+  - macOS dock 재활성화 (`activate` 이벤트)
+
+### 다음 단계 (Step 2)
+- `index.html`의 `<iframe id="media-iframe">` → `<webview id="media-iframe">` 교체
+- `app.js`에서 webview 전용 이벤트 처리 (`did-finish-load`, `did-fail-load` 등)
