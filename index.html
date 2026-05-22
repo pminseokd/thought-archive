@@ -153,9 +153,11 @@
             <p data-i18n="mediaPh1">Select a resource from the list</p>
             <small data-i18n="mediaPh2">YouTube, Shorts, or Websites will appear here</small>
           </div>
-          <iframe id="media-iframe" style="display:none;" allowfullscreen
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture">
-          </iframe>
+          <webview id="media-iframe"
+            allowpopups
+            partition="persist:media"
+            useragent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36">
+          </webview>
           <!-- iframe 임베드 차단 시 표시되는 커스텀 오버레이 -->
           <div class="iframe-blocked" id="iframe-blocked" style="display:none">
             <svg class="iframe-blocked-icon" viewBox="0 0 80 72" fill="none" xmlns="http://www.w3.org/2000/svg">

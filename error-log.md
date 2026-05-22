@@ -11,3 +11,11 @@
 2026-05-21 00:02:00 -- transform: scale()로 인한 구조적 프레임 드롭 --- 1440px 모니터에서 앱 전체(1600px)에 transform: scale(0.9) 적용 시 앱 전체가 단일 GPU 합성 레이어로 묶여 스크롤/인터랙션마다 전체 레이어 재합성 발생 → transform: scale() 을 CSS zoom 으로 교체 (레이아웃 레벨 처리, GPU 레이어 미생성)
 
 2026-05-21 00:03:00 -- 설정 창 열었을 때 프레임 드롭 가장 심함 --- ① settings-overlay가 닫혀있을 때도 display:flex + opacity:0 상태로 렌더링 파이프라인에 잔류, backdrop-filter: blur(6px) 를 매 프레임 GPU가 계산 → 닫힐 때 display:none으로 완전 제거 + backdrop-filter 제거 / ② settings-modal에도 backdrop-filter: blur(28px) 상시 적용 → 제거 / ③ shortcut-help도 동일 구조 → 동일하게 display:none 방식으로 수정 / ④ save-confirm-panel backdrop-filter: blur(20px) 항상 합성 중 → 제거
+
+2026-05-22 22:00:00 -- YouTube Error 153 (동영상 플레이어 구성 오류) --- Electron webview에서 youtube.com/embed/ URL 로드 시 YouTube가 embed 재생을 차단. → toEmbedUrl() 함수 수정: embed URL 대신 youtube.com/watch?v=ID 로 변환하여 webview에서 전체 YouTube 페이지 로드.
+
+2026-05-22 22:10:00 -- webview 콘텐츠가 상단 1/4만 렌더링되고 나머지 검정 --- 근본 원인: webview를 display:none으로 초기화 시 Electron guest renderer가 viewport를 0으로 설정. 이후 display:block으로 전환해도 이미 렌더링된 영역(~220px)만 표시됨. → index.html에서 webview 초기 style을 display:none 제거, style.css에서 #media-iframe을 position:absolute; inset:0; visibility:hidden으로 설정. app.js에서 show/hide를 display 대신 visibility + pointer-events로 제어.
+
+2026-05-22 22:15:00 -- YouTube 홈 페이지로 리다이렉트 (Electron user-agent 감지) --- YouTube가 Electron 기본 UA를 감지해 watch 페이지를 홈으로 리다이렉트. → main.js에서 session.defaultSession.setUserAgent(Chrome UA) 및 session.fromPartition('persist:media').setUserAgent() 적용. webview에 partition="persist:media" + useragent 속성 추가. did-navigate 이벤트로 실제 이동 URL을 URL 바에 동기화.
+
+2026-05-22 22:20:00 -- "동영상이 처리중입니다. 나중에 다시 시도하세요" — YouTube 재생 불가 --- Electron은 Widevine CDM(DRM)을 기본 포함하지 않아 YouTube 영상 디코딩 불가. → main.js에 Chrome 설치 경로의 WidevineCdm 탐색 로직 추가: process.arch(arm64/x64)에 따라 libwidevinecdm.dylib 경로 선택 후 app.commandLine.appendSwitch('widevine-cdm-path', ...) / ('widevine-cdm-version', ...) 등록. manifest.json에서 버전(4.10.3050.0) 자동 파싱.

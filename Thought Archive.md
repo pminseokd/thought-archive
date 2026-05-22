@@ -318,21 +318,55 @@ DOMContentLoaded 시작 시 14개 자주 쓰이는 요소를 `DOM` 객체에 한
 
 ---
 
-## 17. Electron 마이그레이션 (2026-05-21 진행 중)
+## 17. Electron 마이그레이션 (2026-05-21 ~ 2026-05-22 완료)
 
 ### 목표
 iframe의 `X-Frame-Options` 제한 없이 모든 웹사이트를 앱 내에서 직접 열기 위해 Electron `<webview>` 태그로 전환.
 
-### 완료된 작업 (Step 1)
+### Step 1 — Electron 앱 구조 전환 (2026-05-21)
 - `main.js` → `app.js` rename (Electron 메인 프로세스 파일명 충돌 방지)
 - `index.html` script src 업데이트 (`app.js`)
 - `package.json` 생성 (`electron ^35`, `"main": "main.js"`, `"start": "electron ."`)
-- `npm install` — Electron 설치 완료
-- `main.js` (Electron 메인 프로세스) 생성:
-  - `BrowserWindow` 1600×900, `minWidth: 1200`, `minHeight: 700`
-  - `webPreferences: { webviewTag: true, contextIsolation: false }`
+- `main.js` (Electron 메인 프로세스):
+  - `BrowserWindow` 1600×900, `webPreferences: { webviewTag: true }`
   - macOS dock 재활성화 (`activate` 이벤트)
 
-### 다음 단계 (Step 2)
-- `index.html`의 `<iframe id="media-iframe">` → `<webview id="media-iframe">` 교체
-- `app.js`에서 webview 전용 이벤트 처리 (`did-finish-load`, `did-fail-load` 등)
+### Step 2 — webview 전환 및 영상 재생 완성 (2026-05-22)
+
+#### iframe → webview 교체
+- `index.html`: `<iframe>` → `<webview>` 교체
+  - `partition="persist:media"` — 별도 세션으로 YouTube 쿠키/세션 분리
+  - `useragent="Mozilla/5.0 ... Chrome/124.0.0.0 ..."` — Chrome UA 설정
+  - `allowpopups` — 팝업 허용
+- `style.css`: `#media-iframe { position:absolute; inset:0; visibility:hidden; pointer-events:none; }`
+  - `display:none` 대신 `visibility:hidden` 사용 (webview guest renderer viewport 초기화 보존)
+- `app.js`: show/hide를 `_showWebview()` / `_hideWebview()` 함수로 분리 (visibility + pointer-events 제어)
+
+#### YouTube URL 처리
+- `toEmbedUrl()` 함수 → embed URL 대신 `youtube.com/watch?v=ID` 반환
+  - webview는 실제 브라우저 컨텍스트이므로 embed 불필요, Error 153 방지
+- `did-navigate` / `did-navigate-in-page` 이벤트로 실제 내비게이션 URL을 URL 바에 동기화
+- `_setupIframeBlockDetect(url)`: `did-fail-load` 이벤트 기반으로 교체 (errorCode -3은 정상 중단)
+- 일반 웹사이트도 webview에서 직접 로드 (X-Frame-Options 제한 없음)
+
+#### Widevine CDM 설정 (YouTube 영상 재생)
+- `main.js`에 Chrome 설치 경로에서 Widevine CDM 자동 탐색:
+  ```js
+  app.commandLine.appendSwitch('widevine-cdm-path', WV_PATH);
+  app.commandLine.appendSwitch('widevine-cdm-version', widevineVersion());
+  ```
+- `process.arch`로 arm64 / x64 자동 선택
+- `manifest.json`에서 버전 파싱 (현재: `4.10.3050.0`)
+- Chrome 미설치 시 스위치 미등록으로 graceful 처리
+
+#### 세션 UA 설정
+```js
+session.defaultSession.setUserAgent(CHROME_UA);
+session.fromPartition('persist:media').setUserAgent(CHROME_UA);
+```
+
+### 실행 방법
+```bash
+npm start        # Electron 앱 (권장)
+python3 -m http.server 7788  # 브라우저 테스트용
+```

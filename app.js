@@ -188,6 +188,16 @@ let _backlinkIndexCache = null;
 
 const DOM = {};
 
+function _showWebview() {
+  DOM.mediaIframe.style.visibility   = 'visible';
+  DOM.mediaIframe.style.pointerEvents = 'auto';
+}
+function _hideWebview() {
+  DOM.mediaIframe.style.visibility   = 'hidden';
+  DOM.mediaIframe.style.pointerEvents = 'none';
+  DOM.mediaIframe.stop?.();
+}
+
 /* ─── Init ──────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   Object.assign(DOM, {
@@ -217,6 +227,15 @@ document.addEventListener('DOMContentLoaded', () => {
   renderSidebarTags();
 
   DOM.noteEditor.addEventListener('input', updateWordCount);
+
+  /* webview 실제 내비게이션 URL → URL 바 동기화 */
+  DOM.mediaIframe.addEventListener('did-navigate', e => {
+    if (e.url && e.url !== 'about:blank') DOM.urlBar.value = e.url;
+  });
+  DOM.mediaIframe.addEventListener('did-navigate-in-page', e => {
+    if (e.isMainFrame && e.url) DOM.urlBar.value = e.url;
+  });
+
 
   DOM.urlBar.addEventListener('keydown', e => { if (e.key === 'Enter') loadUrl(); });
   DOM.urlBar.addEventListener('paste', () => {
@@ -541,16 +560,9 @@ function loadResource(r) {
   const embedUrl = toEmbedUrl(r.url);
   DOM.urlBar.value = embedUrl;
   DOM.mediaPlaceholder.style.display = 'none';
-  if (r.type === 'website') {
-    /* 브라우저 에러 페이지 방지: iframe에 URL 로드하지 않음 */
-    DOM.mediaIframe.src = 'about:blank';
-    DOM.mediaIframe.style.display = 'none';
-    _setupIframeBlockDetect(embedUrl, false);
-  } else {
-    DOM.mediaIframe.style.display = 'block';
-    DOM.mediaIframe.src = embedUrl;
-    _setupIframeBlockDetect(embedUrl, true);
-  }
+  _showWebview();
+  DOM.mediaIframe.src = embedUrl;
+  _setupIframeBlockDetect(embedUrl);
   addFeedItem('blue', `Loaded <b>${r.name}</b>`);
   showToast(`▶  ${r.name} loaded`);
 }
@@ -586,36 +598,44 @@ function switchView(mode) {
   }
 }
 
-/* ─── iframe Block Detection ────────────────────────────────────── */
-function _setupIframeBlockDetect(url, isEmbed) {
-  if (isEmbed) {
-    /* YouTube embed 등 정상 로드 가능한 URL */
-    DOM.iframeBlocked.style.display = 'none';
-  } else {
-    /* 일반 웹사이트: 대부분 X-Frame-Options로 차단 → 즉시 오버레이 */
+/* ─── Webview Load/Fail Detection ───────────────────────────────── */
+function _setupIframeBlockDetect(url) {
+  const wv = DOM.mediaIframe;
+  if (wv._failHandler) {
+    wv.removeEventListener('did-fail-load', wv._failHandler);
+    delete wv._failHandler;
+  }
+  DOM.iframeBlocked.style.display = 'none';
+
+  const handler = (e) => {
+    if (e.errorCode === -3) return; // aborted (정상 내비게이션)
     DOM.iframeBlockedUrl.textContent = url;
     DOM.iframeBlocked.style.display = 'flex';
-  }
+  };
+  wv._failHandler = handler;
+  wv.addEventListener('did-fail-load', handler, { once: true });
 }
 
-/* ─── YouTube URL → Embed ────────────────────────────────────────── */
+/* ─── YouTube URL 정규화 ─────────────────────────────────────────── */
+/* webview는 embed URL 대신 watch URL을 직접 로드 (Error 153 방지) */
 function toEmbedUrl(raw) {
   const s    = raw.trim();
   const full = s.startsWith('http') ? s : 'https://' + s;
-  let videoId = null;
   try {
     const u = new URL(full);
     if (u.hostname === 'youtu.be') {
-      videoId = u.pathname.slice(1).split(/[?&#]/)[0];
-    } else if (u.hostname.includes('youtube.com') && u.pathname === '/watch') {
-      videoId = u.searchParams.get('v');
-    } else if (u.hostname.includes('youtube.com') && u.pathname.startsWith('/shorts/')) {
-      videoId = u.pathname.split('/shorts/')[1].split(/[?&#]/)[0];
-    } else if (u.hostname.includes('youtube.com') && u.pathname.startsWith('/embed/')) {
-      return full;
+      const id = u.pathname.slice(1).split(/[?&#]/)[0];
+      return `https://www.youtube.com/watch?v=${id}`;
+    }
+    if (u.hostname.includes('youtube.com')) {
+      if (u.pathname.startsWith('/embed/')) {
+        const id = u.pathname.split('/embed/')[1].split(/[?&#]/)[0];
+        return `https://www.youtube.com/watch?v=${id}`;
+      }
+      return full; // /watch, /shorts 등 그대로
     }
   } catch (_) {}
-  return videoId ? `https://www.youtube.com/embed/${videoId}` : full;
+  return full;
 }
 
 /* ─── URL Bar ────────────────────────────────────────────────────── */
@@ -625,15 +645,9 @@ function loadUrl() {
   const url = toEmbedUrl(raw);
   DOM.urlBar.value = url;
   DOM.mediaPlaceholder.style.display = 'none';
-  const isEmbed = url.includes('youtube.com/embed/');
-  if (isEmbed) {
-    DOM.mediaIframe.style.display = 'block';
-    DOM.mediaIframe.src = url;
-  } else {
-    DOM.mediaIframe.src = 'about:blank';
-    DOM.mediaIframe.style.display = 'none';
-  }
-  _setupIframeBlockDetect(url, isEmbed);
+  _showWebview();
+  DOM.mediaIframe.src = url;
+  _setupIframeBlockDetect(url);
   switchView('media');
   addFeedItem('blue', `URL loaded: <b>${url.slice(0,38)}…</b>`);
 }
@@ -987,7 +1001,7 @@ function deleteResource(id) {
 
   if (activeResId === id) {
     activeResId = null;
-    DOM.mediaIframe.src = ''; DOM.mediaIframe.style.display = 'none';
+    _hideWebview();
     DOM.mediaPlaceholder.style.display = '';
   }
 
