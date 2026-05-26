@@ -122,6 +122,15 @@ Thought Archive/
 
 ---
 
+## 8-A. RESOURCES 영속성 (2026-05-25)
+
+- `ta_resources` 키로 localStorage에 RESOURCES 배열 저장.
+- 앱 초기화 시 `ta_resources`가 존재하면 데모 데이터 대신 저장된 데이터를 로드.
+- `saveResources()` — `addResource()`, `deleteResource()`, `doSaveNote()`(새 메모 생성 분기)에서 호출.
+- 효과: 페이지 새로고침 시 리소스 유실 버그 수정.
+
+---
+
 ## 9. #태그 시스템
 
 ### 태그 입력 (노트 에디터)
@@ -289,6 +298,27 @@ DOMContentLoaded 시작 시 14개 자주 쓰이는 요소를 `DOM` 객체에 한
 | `DOM.toast` | `#toast` |
 | `DOM.iframeBlocked` | `#iframe-blocked` |
 | `DOM.iframeBlockedUrl` | `#iframe-blocked-url` |
+
+---
+
+## 14-A. 추가 최적화 (2026-05-25)
+
+### 노트 제목 맵 캐시 (`_noteTitleMapCache`)
+- `buildNoteTitleMap()` — `Map<title, key>` O(1) 조회 캐시.
+- `invalidateBacklinkIndex()`에서 함께 무효화 (`_noteTitleMapCache = null`).
+- 적용 함수: `renderBodyWithLinks`, `updateNoteOutlinks`, `openNoteByTitle`, `_enhanceArchiveCards` preview 조회.
+- 기존 O(n) `Object.entries(notes).find()` → O(1) Map.get()으로 대체.
+
+### `getAllTags()` 캐싱 (`_tagCache`)
+- `invalidateTagCache()` 추가 — `doSaveNote`, `addResource`, `deleteResource`에서 호출.
+- 반복 호출(사이드바, 자동완성, 분석 뷰)에서 전체 순회 제거.
+
+### 버그 수정
+- `_showBacklinkSourceToast`: `incoming.map(([, n]) => ...)` → `incoming.map(({note: n}) => ...)` 구조분해 오류 수정.
+- `filterResources()`: `renderResources(type)` → `renderResources(type, DOM.searchInput?.value || '')` — 필터 변경 시 검색어 유실 버그 수정.
+
+### 기타
+- 세션 타이머: `document.hidden` 체크 추가 — 페이지 비활성 시 틱 스킵.
 
 ---
 

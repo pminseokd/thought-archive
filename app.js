@@ -144,26 +144,27 @@ function applyLanguage(lang) {
 
 /* ─── Data ──────────────────────────────────────────────────────── */
 const RESOURCES = [
-  { id:1, type:'youtube', name:'Deep Work Music', meta:'Focus · 8h loop',
-    url:'https://www.youtube.com/embed/jfKfPfyJRdk', icon:'▶', thumb:'yt', tags:[] },
   { id:2, type:'shorts',  name:'Dev Shorts',      meta:'Shorts · Tech tips',
     url:'https://www.youtube.com/embed/Tn6-PIqc4UM', icon:'⚡', thumb:'short', tags:[] },
   { id:3, type:'website', name:'GitHub Repo',     meta:'github.com',
     url:'https://github.com', icon:'⊕', thumb:'web', tags:['#dev'] },
-  { id:4, type:'youtube', name:'Lo-Fi Hip Hop',   meta:'Chill Beats · Study',
-    url:'https://www.youtube.com/embed/5qap5aO4i9A', icon:'▶', thumb:'yt', tags:['#focus','#music'] },
   { id:5, type:'website', name:'MDN Web Docs',    meta:'developer.mozilla.org',
     url:'https://developer.mozilla.org', icon:'⊕', thumb:'web', tags:['#dev','#reference'] },
   { id:6, type:'note',    name:'Project Ideas',   meta:'Note · 3 tags',
     url:null, icon:'✎', thumb:'note', tags:['#idea'] }
 ];
+/* 저장된 리소스가 있으면 데모 데이터를 교체 */
+{
+  const _r = localStorage.getItem('ta_resources');
+  if (_r) {
+    try { RESOURCES.length = 0; RESOURCES.push(...JSON.parse(_r)); } catch (_) {}
+  }
+}
 
 const INITIAL_FEED = [
   { dot:'purple', text:'Note <b>Project Ideas</b> saved',        time:'Just now'  },
-  { dot:'blue',   text:'Resource <b>Lo-Fi Hip Hop</b> added',    time:'2 min ago' },
   { dot:'purple', text:'Note <b>Architecture Plan</b> updated',  time:'8 min ago' },
   { dot:'dim',    text:'Session started',                        time:'12 min ago'},
-  { dot:'blue',   text:'<b>Deep Work Music</b> loaded',          time:'14 min ago'},
   { dot:'dim',    text:'Archive opened',                         time:'20 min ago'}
 ];
 
@@ -185,6 +186,8 @@ let currentTags        = [];
 let activeTags         = [];
 
 let _backlinkIndexCache = null;
+let _noteTitleMapCache  = null;
+let _tagCache           = null;
 
 const DOM = {};
 
@@ -274,6 +277,23 @@ function setNav(el) {
   el.classList.add('active');
   const page = el.dataset.page;
   if (page) navigateTo(page);
+}
+
+function goHome() {
+  DOM.main.dataset.view = 'home';
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelector('[data-page="home"]')?.classList.add('active');
+  renderSidebarTags();
+}
+
+function goHomeAndNewNote() {
+  goHome();
+  switchView('note');
+}
+
+function goHomeAndAddResource() {
+  goHome();
+  addResource();
 }
 
 function navigateTo(page) {
@@ -720,6 +740,7 @@ function doSaveNote(color, emoji) {
       tags: [...currentTags]
     };
     RESOURCES.push(newRes);
+    saveResources();
     const oldKey   = currentNoteKey;
     currentNoteKey = 'note_' + rid;
     activeResId    = rid;
@@ -740,6 +761,7 @@ function doSaveNote(color, emoji) {
     tags:  [...currentTags]
   };
   invalidateBacklinkIndex();
+  invalidateTagCache();
   localStorage.setItem('ta_notes', JSON.stringify(notes));
   updateStatCounters();
   renderSidebarTags();
@@ -832,11 +854,15 @@ function renderTagPills() {
 }
 
 /* ─── All Tags (notes + resources) ──────────────────────────────── */
+function invalidateTagCache() { _tagCache = null; }
+
 function getAllTags() {
+  if (_tagCache) return _tagCache;
   const tags = new Set();
   Object.values(notes).forEach(n  => (n.tags || []).forEach(t => tags.add(t)));
   RESOURCES.forEach(r => (r.tags || []).forEach(t => tags.add(t)));
-  return [...tags].sort();
+  _tagCache = [...tags].sort();
+  return _tagCache;
 }
 
 /* ─── Sidebar Tag Filter ─────────────────────────────────────────── */
@@ -948,7 +974,7 @@ function filterResources(type) {
   document.querySelectorAll('.pill').forEach(p => {
     p.classList.toggle('active', p.dataset.filter === type);
   });
-  renderResources(type);
+  renderResources(type, DOM.searchInput?.value || '');
 }
 
 /* ─── Add Resource ───────────────────────────────────────────────── */
@@ -972,11 +998,18 @@ function addResource() {
     tags
   };
   RESOURCES.push(newR);
+  saveResources();
+  invalidateTagCache();
   renderResources(activeFilter);
   renderSidebarTags();
   updateStatCounters();
   addFeedItem('blue', `Resource <b>${name}</b> added`);
   showToast(`＋ "${name}" added to list`);
+}
+
+/* ─── Resource Persistence ───────────────────────────────────────── */
+function saveResources() {
+  localStorage.setItem('ta_resources', JSON.stringify(RESOURCES));
 }
 
 /* ─── Delete Resource ────────────────────────────────────────────── */
@@ -988,6 +1021,7 @@ function deleteResource(id) {
   if (r.type === 'note') {
     delete notes['note_' + id];
     invalidateBacklinkIndex();
+    invalidateTagCache();
     localStorage.setItem('ta_notes', JSON.stringify(notes));
     if (currentNoteKey === 'note_' + id) {
       currentNoteKey = null;
@@ -1006,6 +1040,8 @@ function deleteResource(id) {
   }
 
   RESOURCES.splice(idx, 1);
+  saveResources();
+  invalidateTagCache();
   renderResources(activeFilter);
   renderSidebarTags();
   updateStatCounters();
@@ -1338,6 +1374,7 @@ window.addEventListener('resize', applyScale);
 /* ─── Session Timer ──────────────────────────────────────────────── */
 let sessionSecs = 0;
 setInterval(() => {
+  if (document.hidden) return;
   sessionSecs++;
   const h = Math.floor(sessionSecs / 3600);
   const m = Math.floor((sessionSecs % 3600) / 60);
@@ -1362,11 +1399,11 @@ function parseBacklinks(body) {
 }
 
 function renderBodyWithLinks(body) {
+  const titleMap = buildNoteTitleMap();
   return body
     .replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/\[\[([^\]]+)\]\]/g, (_, title) => {
-      const exists = Object.values(notes).some(n => n.title === title);
-      const cls = exists ? 'bl-link' : 'bl-link broken';
+      const cls = titleMap.has(title) ? 'bl-link' : 'bl-link broken';
       return `<span class="${cls}" data-title="${title.replace(/"/g, '&quot;')}">${title}</span>`;
     });
 }
@@ -1386,6 +1423,17 @@ function buildBacklinkIndex() {
 
 function invalidateBacklinkIndex() {
   _backlinkIndexCache = null;
+  _noteTitleMapCache  = null;
+}
+
+function buildNoteTitleMap() {
+  if (_noteTitleMapCache) return _noteTitleMapCache;
+  const m = new Map();
+  Object.entries(notes).forEach(([key, note]) => {
+    if (note.title) m.set(note.title, key);
+  });
+  _noteTitleMapCache = m;
+  return m;
 }
 
 function getBacklinksTo(title) {
@@ -1516,10 +1564,11 @@ function updateNoteOutlinks() {
   const links = parseBacklinks(editor.value);
   if (links.length === 0) { row.style.display = 'none'; return; }
 
+  const titleMap = buildNoteTitleMap();
   row.style.display = 'flex';
   pillsEl.innerHTML = '';
   links.forEach(title => {
-    const exists = Object.values(notes).some(n => n.title === title);
+    const exists = titleMap.has(title);
     const pill   = document.createElement('span');
     pill.className = 'note-outlink-pill' + (exists ? '' : ' broken');
     pill.textContent = title;
@@ -1530,9 +1579,9 @@ function updateNoteOutlinks() {
 }
 
 function openNoteByTitle(title) {
-  const entry = Object.entries(notes).find(([, n]) => n.title === title);
-  if (!entry) { showToast(`⚠  "${title}" 노트를 찾을 수 없습니다`); return; }
-  const [key, note] = entry;
+  const key = buildNoteTitleMap().get(title);
+  if (!key) { showToast(`⚠  "${title}" 노트를 찾을 수 없습니다`); return; }
+  const note = notes[key];
   currentNoteKey = key;
   DOM.noteTitle.value  = note.title || '';
   DOM.noteEditor.value = note.body  || '';
@@ -1552,7 +1601,8 @@ function _enhanceArchiveCards() {
   const grid = document.getElementById('archive-grid');
   if (!grid) return;
 
-  const idx = buildBacklinkIndex();
+  const idx      = buildBacklinkIndex();
+  const titleMap = buildNoteTitleMap();
 
   grid.querySelectorAll('.archive-card').forEach(card => {
     const titleEl = card.querySelector('.archive-card-title');
@@ -1562,9 +1612,9 @@ function _enhanceArchiveCards() {
     /* ① body preview에 [[링크]] 인라인 렌더링 */
     const previewEl = card.querySelector('.archive-card-preview');
     if (previewEl) {
-      const entry = Object.entries(notes).find(([, n]) => n.title === title);
-      if (entry) {
-        const body = entry[1].body || '';
+      const key = titleMap.get(title);
+      if (key) {
+        const body = notes[key].body || '';
         previewEl.innerHTML = renderBodyWithLinks(body) || '<em style="opacity:.4">Empty note</em>';
       }
     }
@@ -1593,7 +1643,7 @@ function _enhanceArchiveCards() {
     badge.className = 'archive-backlink-count' + (count > 0 ? ' has-links' : '');
     badge.textContent = `← ${count} link${count !== 1 ? 's' : ''}`;
     if (count > 0) {
-      badge.title = incoming.map(([, n]) => n.title).join(', ');
+      badge.title = incoming.map(({note: n}) => n.title).join(', ');
       badge.addEventListener('click', e => {
         e.stopPropagation();
         _showBacklinkSourceToast(title, incoming);
@@ -1605,9 +1655,9 @@ function _enhanceArchiveCards() {
 }
 
 function _showBacklinkSourceToast(title, incoming) {
-  const names = incoming.map(([, n]) => `"${n.title}"`).join(', ');
+  const names = incoming.map(({note: n}) => `"${n.title}"`).join(', ');
   showToast(`← ${incoming.length}개 노트가 참조: ${names.slice(0, 60)}`);
-  updateBacklinkPanel(title, incoming.map(([key, note]) => ({ key, note })));
+  updateBacklinkPanel(title, incoming);
 }
 
 /* ═══════════════════════════════════════════════════════════════

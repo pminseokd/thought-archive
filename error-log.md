@@ -19,3 +19,15 @@
 2026-05-22 22:15:00 -- YouTube 홈 페이지로 리다이렉트 (Electron user-agent 감지) --- YouTube가 Electron 기본 UA를 감지해 watch 페이지를 홈으로 리다이렉트. → main.js에서 session.defaultSession.setUserAgent(Chrome UA) 및 session.fromPartition('persist:media').setUserAgent() 적용. webview에 partition="persist:media" + useragent 속성 추가. did-navigate 이벤트로 실제 이동 URL을 URL 바에 동기화.
 
 2026-05-22 22:20:00 -- "동영상이 처리중입니다. 나중에 다시 시도하세요" — YouTube 재생 불가 --- Electron은 Widevine CDM(DRM)을 기본 포함하지 않아 YouTube 영상 디코딩 불가. → main.js에 Chrome 설치 경로의 WidevineCdm 탐색 로직 추가: process.arch(arm64/x64)에 따라 libwidevinecdm.dylib 경로 선택 후 app.commandLine.appendSwitch('widevine-cdm-path', ...) / ('widevine-cdm-version', ...) 등록. manifest.json에서 버전(4.10.3050.0) 자동 파싱.
+
+2026-05-25 00:00:00 -- RESOURCES 페이지 새로고침 시 유실 --- RESOURCES 배열이 메모리 전용이어서 새로고침마다 데모 데이터로 초기화. → ta_resources 키로 localStorage 저장/로드 추가. saveResources() 함수 추가 및 addResource/deleteResource/doSaveNote(신규) 호출 지점에 적용.
+
+2026-05-25 00:01:00 -- _showBacklinkSourceToast 구조분해 오류 --- incoming 배열이 {key, note}[] 객체인데 ([, n]) 배열 구조분해 적용 → n이 undefined. → ({note: n}) 객체 구조분해로 수정.
+
+2026-05-25 00:02:00 -- filterResources() 검색어 유실 --- renderResources(type) 호출 시 searchInput.value 미전달 → 타입 필터 변경 시 검색어가 사라짐. → renderResources(type, DOM.searchInput?.value || '') 로 수정.
+
+2026-05-26 00:00:00 -- Widevine CDM 미동작 확인 (Electron 35 / Chromium 134) --- navigator.requestMediaKeySystemAccess('com.widevine.alpha') 호출 시 "Unsupported keySystem" 반환. npm 배포 Electron 바이너리는 라이선스 정책상 Widevine 컴파일 비포함. app.commandLine.appendSwitch('widevine-cdm-path', ...) 스위치 무효. DRM 필요 콘텐츠(일부 라이브스트림 아카이브 등)는 재생 불가. 일반 YouTube 영상(AES 암호화)은 Widevine 없이 정상 재생됨. → CDM 경로를 라이브러리 파일에서 베이스 디렉토리로 변경 시도했으나 미해결. 완전한 해결책: electron-widevinecdm 패키지 또는 Castlabs 빌드 사용 필요(현재 미적용).
+
+2026-05-26 00:01:00 -- 기본 YouTube 데모 리소스 재생 오류 (jfKfPfyJRdk, 5qap5aO4i9A) --- 기본 RESOURCES 배열의 YouTube 항목 2개(Deep Work Music · Lo-Fi Hip Hop)가 Widevine 미지원 또는 YouTube 스트림 아카이브 제한으로 재생 불가. → RESOURCES 배열에서 해당 항목 삭제, INITIAL_FEED 참조도 제거.
+
+2026-05-26 00:02:00 -- [새 메모] · [리소스 추가] 버튼 미동작 --- Archive/Analytics 페이지(`main[data-view="archive|analytics"]`)에서 CSS로 `.dual-view-wrap { display:none }` 처리 중, 버튼 클릭 시 `switchView()`/`addResource()`는 실행되지만 결과가 보이지 않음. → `goHomeAndNewNote()` · `goHomeAndAddResource()` 래퍼 함수 추가: 클릭 시 Home nav 활성화 + `main.dataset.view = 'home'` 설정 후 동작 실행.
