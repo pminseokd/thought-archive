@@ -95,18 +95,19 @@ npm start
 
 ---
 
-## 📦 Build (Windows .exe)
+## 📦 Build
 
-`@electron/packager`로 Windows x64 실행 파일을 빌드합니다 (macOS에서도 wine 없이 빌드 가능).
+`@electron/packager`로 데스크톱 실행 파일을 빌드합니다 (macOS에서 wine 없이 양 플랫폼 빌드 가능).
 
 ```bash
-npm run build:win
+npm run build:win    # Windows x64  → dist/Thought Archive-win32-x64/Thought Archive.exe
+npm run build:mac    # macOS Universal → dist/Thought Archive-darwin-universal/Thought Archive.app
 ```
 
-산출물: `dist/Thought Archive-win32-x64/Thought Archive.exe`
-앱 코드는 `resources/app.asar`로 번들되며, 폴더 전체를 Windows로 복사해 `.exe`를 실행합니다.
+- **Windows**: `dist/Thought Archive-win32-x64/` 폴더 전체를 복사해 `.exe` 실행 (앱 코드는 `resources/app.asar`로 번들)
+- **macOS**: Universal 바이너리(Intel + Apple Silicon). 서명 미적용이라 첫 실행 시 우클릭 → 열기 또는 `xattr -cr "Thought Archive.app"` 필요
 
-> 현재 버전: **v1.0.1**
+> 현재 버전: **v1.0.1** · [GitHub Releases](https://github.com/pminseokd/thought-archive/releases)
 
 ---
 

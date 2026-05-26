@@ -5,7 +5,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build:win": "electron-packager . \"Thought Archive\" --platform=win32 --arch=x64 --out=dist --overwrite --app-version=1.0.1 --ignore=\"/dist($|/)\" --ignore=\"/error-log\\.md$\" --ignore=\"/.git($|/)\""
+    "build:win": "electron-packager . \"Thought Archive\" --platform=win32 --arch=x64 --out=dist --overwrite --app-version=1.0.1 --ignore=\"/dist($|/)\" --ignore=\"/error-log\\.md$\" --ignore=\"/.git($|/)\"",
+    "build:mac": "electron-packager . \"Thought Archive\" --platform=darwin --arch=universal --out=dist --overwrite --app-version=1.0.1 --ignore=\"/dist($|/)\" --ignore=\"/error-log\\.md$\" --ignore=\"/.git($|/)\""
   },
   "devDependencies": {
     "@electron/packager": "^20.0.0",
