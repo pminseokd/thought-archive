@@ -46,6 +46,9 @@ const TRANSLATIONS = {
     shSave:'Save note', shToggleView:'Toggle Media / Note', shFocusUrl:'Focus URL bar',
     shFocusSearch:'Focus search', shFocusMode:'Toggle Focus Mode', shSettings:'Open Settings',
     shHelp:'This help panel', shEscape:'Close panel / Exit mode',
+    arTitle:'Add Resource', arDesc:'Add a YouTube, Shorts, or Website link',
+    arName:'Name', arNamePh:'My resource', arUrl:'URL (optional)', arTags:'Tags (optional)',
+    arHint:'YouTube / Shorts auto-detected from URL', arCancel:'Cancel', arAdd:'＋ Add',
   },
   ko: {
     newNote:'✎ 새 메모', addResource:'＋ 리소스 추가', focus:'⊡ 집중모드', focusExit:'⊠ 집중모드 해제',
@@ -93,6 +96,9 @@ const TRANSLATIONS = {
     shSave:'메모 저장', shToggleView:'미디어 / 메모 전환', shFocusUrl:'URL 바 포커스',
     shFocusSearch:'검색창 포커스', shFocusMode:'집중 모드 전환', shSettings:'설정 열기',
     shHelp:'단축키 도움말', shEscape:'패널 닫기 / 모드 종료',
+    arTitle:'리소스 추가', arDesc:'유튜브 · 숏츠 · 웹사이트 링크를 추가합니다',
+    arName:'이름', arNamePh:'리소스 이름', arUrl:'URL (선택)', arTags:'태그 (선택)',
+    arHint:'URL에서 유튜브 / 숏츠 자동 감지', arCancel:'취소', arAdd:'＋ 추가',
   }
 };
 
@@ -269,6 +275,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (v && !v.startsWith('#')) tagInput.value = '#' + v;
     });
   }
+
+  /* Add Resource 모달 — Enter 제출 */
+  ['ar-name', 'ar-url', 'ar-tags'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); confirmAddResource(); }
+    });
+  });
 });
 
 /* ─── Navigation ─────────────────────────────────────────────────── */
@@ -977,21 +991,52 @@ function filterResources(type) {
   renderResources(type, DOM.searchInput?.value || '');
 }
 
-/* ─── Add Resource ───────────────────────────────────────────────── */
+/* ─── Add Resource (in-app modal — Electron은 prompt() 미지원) ────── */
 function addResource() {
-  const name = prompt('Resource name:');
-  if (!name) return;
-  const url     = prompt('URL (optional):');
-  const tagsRaw = prompt('Tags (optional, e.g. #dev #work):') || '';
+  const overlay = document.getElementById('add-res-overlay');
+  if (!overlay) return;
+  document.getElementById('ar-name').value = '';
+  document.getElementById('ar-url').value  = '';
+  document.getElementById('ar-tags').value = '';
+  overlay.classList.add('visible');
+  requestAnimationFrame(() => overlay.classList.add('open'));
+  setTimeout(() => document.getElementById('ar-name')?.focus(), 60);
+}
+
+function closeAddResource() {
+  const overlay = document.getElementById('add-res-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  overlay.addEventListener('transitionend', () => overlay.classList.remove('visible'), { once: true });
+}
+
+function addResOverlayClickClose(e) {
+  if (e.target === document.getElementById('add-res-overlay')) closeAddResource();
+}
+
+function confirmAddResource() {
+  const nameEl = document.getElementById('ar-name');
+  const name   = nameEl.value.trim();
+  if (!name) { nameEl.focus(); showToast('⚠  이름을 입력하세요'); return; }
+
+  const url     = document.getElementById('ar-url').value.trim();
+  const tagsRaw = document.getElementById('ar-tags').value;
   const tags    = tagsRaw.split(/[\s,]+/).map(t => t.trim()).filter(Boolean).map(normalizeTag).filter(t => t.length > 1);
-  const isYT     = (url || '').includes('youtube') || (url || '').includes('youtu.be');
-  const isShorts = isYT && (url || '').includes('/shorts/');
+
+  const isYT     = url.includes('youtube') || url.includes('youtu.be');
+  const isShorts = isYT && url.includes('/shorts/');
   const type     = isShorts ? 'shorts' : isYT ? 'youtube' : 'website';
   const iconMap  = { youtube:'▶', shorts:'⚡', website:'⊕' };
   const thumbMap = { youtube:'yt', shorts:'short', website:'web' };
+
+  let meta = 'Local';
+  if (url) {
+    try { meta = new URL(url.startsWith('http') ? url : 'https://' + url).hostname; }
+    catch (_) { meta = url; }
+  }
+
   const newR = {
-    id: Date.now(), type, name,
-    meta: url ? new URL(url.startsWith('http') ? url : 'https://'+url).hostname : 'Local',
+    id: Date.now(), type, name, meta,
     url: url || null,
     icon: iconMap[type],
     thumb: thumbMap[type],
@@ -1005,6 +1050,7 @@ function addResource() {
   updateStatCounters();
   addFeedItem('blue', `Resource <b>${name}</b> added`);
   showToast(`＋ "${name}" added to list`);
+  closeAddResource();
 }
 
 /* ─── Resource Persistence ───────────────────────────────────────── */
@@ -1320,6 +1366,8 @@ document.addEventListener('keydown', e => {
   const inInput  = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName);
 
   if (e.key === 'Escape') {
+    const arOverlay = document.getElementById('add-res-overlay');
+    if (arOverlay && arOverlay.classList.contains('open')) { closeAddResource(); return; }
     if (DOM.savePanel && DOM.savePanel.classList.contains('open')) { cancelSave(); return; }
     if (DOM.settingsOverlay.classList.contains('open'))  { closeSettings();     return; }
     if (helpOpen)                             { closeShortcutHelp(); return; }

@@ -519,6 +519,45 @@
 </div><!-- /settings-overlay -->
 
 <!-- ══════════════════════════════════════════════════════════════
+     ADD RESOURCE MODAL
+══════════════════════════════════════════════════════════════ -->
+<div id="add-res-overlay" onclick="addResOverlayClickClose(event)">
+  <div id="add-res-modal">
+    <div class="sett-header">
+      <div class="sett-header-left">
+        <div class="sett-header-icon">＋</div>
+        <div class="sett-header-title">
+          <h2 data-i18n="arTitle">Add Resource</h2>
+          <p data-i18n="arDesc">Add a YouTube, Shorts, or Website link</p>
+        </div>
+      </div>
+      <div class="sett-close" onclick="closeAddResource()">✕</div>
+    </div>
+    <div class="ar-body">
+      <label class="ar-field">
+        <span class="ar-field-label" data-i18n="arName">Name</span>
+        <input id="ar-name" class="ar-input" type="text" placeholder="My resource" data-i18n-placeholder="arNamePh" />
+      </label>
+      <label class="ar-field">
+        <span class="ar-field-label" data-i18n="arUrl">URL (optional)</span>
+        <input id="ar-url" class="ar-input" type="text" placeholder="https://..." />
+      </label>
+      <label class="ar-field">
+        <span class="ar-field-label" data-i18n="arTags">Tags (optional)</span>
+        <input id="ar-tags" class="ar-input" type="text" placeholder="#dev #work" />
+      </label>
+    </div>
+    <div class="sett-footer">
+      <span class="sett-footer-note" data-i18n="arHint">YouTube / Shorts auto-detected from URL</span>
+      <div style="display:flex;gap:8px;">
+        <button class="sett-btn ar-cancel" onclick="closeAddResource()" data-i18n="arCancel">Cancel</button>
+        <button class="sett-btn blue" onclick="confirmAddResource()" data-i18n="arAdd">＋ Add</button>
+      </div>
+    </div>
+  </div><!-- /add-res-modal -->
+</div><!-- /add-res-overlay -->
+
+<!-- ══════════════════════════════════════════════════════════════
      SHORTCUT HELP PANEL
 ══════════════════════════════════════════════════════════════ -->
 <div id="shortcut-help">

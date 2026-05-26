@@ -835,6 +835,48 @@ body.light .an-mini-bar-wrap { background: rgba(0,0,0,0.1); }
 .sett-footer-note b { color: var(--blue); }
 
 /* ═══════════════════════════════════════════════════════════════
+   ADD RESOURCE MODAL
+═══════════════════════════════════════════════════════════════ */
+#add-res-overlay {
+  position: fixed; inset: 0; z-index: 210;
+  background: rgba(5,5,9,0.82);
+  display: none; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .2s;
+}
+#add-res-overlay.visible { display: flex; }
+#add-res-overlay.open { opacity: 1; pointer-events: all; }
+#add-res-modal {
+  width: 460px;
+  background: rgba(10,13,22,0.97);
+  border: 1px solid rgba(138,43,226,0.38);
+  border-radius: 20px;
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 0 70px rgba(138,43,226,0.18), 0 40px 100px rgba(0,0,0,0.65);
+  transform: translateY(18px) scale(.98);
+  transition: transform .28s cubic-bezier(.34,1.56,.64,1);
+}
+#add-res-overlay.open #add-res-modal { transform: translateY(0) scale(1); }
+.ar-body { padding: 22px 28px; display: flex; flex-direction: column; gap: 16px; }
+.ar-field { display: flex; flex-direction: column; gap: 6px; }
+.ar-field-label {
+  font-size: 11px; font-weight: 600; color: var(--text-mid);
+  letter-spacing: .3px;
+}
+.ar-input {
+  padding: 10px 12px; border-radius: 10px; font-size: 13px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(138,43,226,0.25);
+  color: var(--text-hi); outline: none; transition: border-color .18s;
+}
+.ar-input::placeholder { color: var(--text-lo); }
+.ar-input:focus { border-color: var(--purple); }
+.sett-btn.ar-cancel {
+  border: 1px solid rgba(138,43,226,0.22); background: rgba(255,255,255,0.04); color: var(--text-mid);
+}
+.sett-btn.ar-cancel:hover { background: rgba(138,43,226,0.14); color: var(--text-hi); }
+body.light #add-res-modal { background: rgba(220,225,240,0.97); }
+body.light #add-res-overlay { background: rgba(180,185,210,0.65); }
+
+/* ═══════════════════════════════════════════════════════════════
    FOCUS MODE  ─ 사이드바 / 우측 패널 숨기고 중앙 풀스크린
 ═══════════════════════════════════════════════════════════════ */
 body.focus #app {
